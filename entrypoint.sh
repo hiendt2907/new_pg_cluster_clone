@@ -251,9 +251,18 @@ if [ -n "${PRIMARY_HOST}" ]; then
   PRIMARY_HINT="${PRIMARY_HOST}"
 fi
 
-# Ensure NODE_ID is numeric for arithmetic; default to 0 if not numeric
+# Ensure NODE_ID is numeric for arithmetic
 if ! [[ "${NODE_ID}" =~ ^[0-9]+$ ]]; then
-  NODE_ID=0
+  # If NODE_NAME ends with a number (e.g., pg-1, pg-2), use that
+  if [[ "${NODE_NAME}" =~ -([0-9]+)$ ]]; then
+    NODE_ID="${BASH_REMATCH[1]}"
+  else
+    # For witness or other special nodes, use a high number (e.g., 99)
+    case "${NODE_NAME}" in
+      witness) NODE_ID=99 ;;
+      *) NODE_ID=0 ;;
+    esac
+  fi
 fi
 
 # Witness node flow
