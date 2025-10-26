@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+
+: "${PGDATA:=/var/lib/postgresql/data}"
+: "${REPMGR_DB:=repmgr}"
+: "${REPMGR_USER:=repmgr}"
+: "${REPMGR_PASSWORD:=repmgrpass}"
+: "${POSTGRES_USER:=postgres}"
+: "${POSTGRES_PASSWORD:=postgrespass}"
+: "${NODE_NAME:=$(hostname)}"
+: "${NODE_ID:=${NODE_NAME##*-}}"
+: "${PEERS:=}"
+: "${PG_PORT:=5432}"
+: "${REPMGR_CONF:=/etc/repmgr/repmgr.conf}"
+: "${IS_WITNESS:=false}"
+: "${PRIMARY_HINT:=pg-1}"
+
+log() { echo "[$(date -Iseconds)] [entrypoint] $*"; }
+pgdata_has_db() { [ -f "$PGDATA/PG_VERSION" ]; }
+
+# ... (backup original content saved for reference)
