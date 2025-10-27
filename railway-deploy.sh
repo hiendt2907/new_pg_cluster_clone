@@ -327,16 +327,20 @@ deploy_service() {
     
     log_info "Deploying service: $service_name"
     
-    # Link to service first
-    railway service "$service_name" || {
-        log_error "  Failed to link to service $service_name"
+    # Change to service directory
+    cd "$PROJECT_DIR/$service_dir" || {
+        log_error "  Failed to change to directory $service_dir"
         return 1
     }
     
-    # Deploy from the service directory (where Dockerfile is)
-    log_info "  Starting deployment from $service_dir..."
-    cd "$PROJECT_DIR/$service_dir"
+    # Select service
+    railway service "$service_name" || {
+        log_error "  Failed to select service $service_name"
+        cd "$PROJECT_DIR"
+        return 1
+    }
     
+    # Deploy from current directory
     railway up --detach || {
         log_error "  Failed to deploy $service_name"
         cd "$PROJECT_DIR"
@@ -344,6 +348,8 @@ deploy_service() {
     }
     
     log_success "  Deployment started for $service_name"
+    
+    # Return to project root
     cd "$PROJECT_DIR"
 }
 
