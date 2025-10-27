@@ -279,6 +279,14 @@ if [ "$IS_WITNESS" = "true" ]; then
   write_pg_hba
   write_postgresql_conf
   gosu postgres pg_ctl -D "$PGDATA" -w start
+  
+  # Create repmgr user and database for witness
+  log "Creating repmgr user and database for witness"
+  gosu postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_roles WHERE rolname='${REPMGR_USER}'" | grep -q 1 \
+    || gosu postgres psql -U "$POSTGRES_USER" -c "CREATE USER ${REPMGR_USER} WITH REPLICATION PASSWORD '${REPMGR_PASSWORD}';"
+  
+  gosu postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_database WHERE datname='${REPMGR_DB}'" | grep -q 1 \
+    || gosu postgres psql -U "$POSTGRES_USER" -c "CREATE DATABASE ${REPMGR_DB} OWNER ${REPMGR_USER};"
 
   # Resolve primary via last-known-primary or discovery
   lk_primary="$(read_last_primary)"
