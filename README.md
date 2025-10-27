@@ -416,11 +416,20 @@ Nếu muốn deploy thủ công qua Railway Dashboard:
 #### Shared Variables (Railway Environment Level)
 Set via `./railway-setup-shared-vars.sh`:
 
+**⚠️ SECURITY: Generate strong passwords before deployment!**
+
 ```bash
+# Generate secure passwords (example)
+POSTGRES_PASSWORD=$(openssl rand -base64 32)
+REPMGR_PASSWORD=$(openssl rand -base64 32)
+
+# Or use your own strong passwords
 POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD   # PostgreSQL superuser password
 REPMGR_PASSWORD=YOUR_SECURE_PASSWORD     # repmgr user password
-PRIMARY_HINT=pg-1                      # Hint for initial primary
+PRIMARY_HINT=pg-1                        # Hint for initial primary
 ```
+
+**Note**: All `.env` files use Railway reference variables `${{POSTGRES_PASSWORD}}` and `${{REPMGR_PASSWORD}}`, so passwords are managed centrally and not committed to Git.
 
 #### PostgreSQL Nodes (Service-specific)
 
