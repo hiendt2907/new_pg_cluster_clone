@@ -31,10 +31,37 @@ else
     log_info "Using provided REPMGR_PASSWORD"
 fi
 
+if [ -z "${APP_READONLY_PASSWORD:-}" ]; then
+    log_info "Generating secure APP_READONLY_PASSWORD..."
+    APP_READONLY_PASSWORD=$(openssl rand -base64 32)
+    log_success "Generated: ${APP_READONLY_PASSWORD:0:8}... (32 characters)"
+else
+    log_info "Using provided APP_READONLY_PASSWORD"
+fi
+
+if [ -z "${APP_READWRITE_PASSWORD:-}" ]; then
+    log_info "Generating secure APP_READWRITE_PASSWORD..."
+    APP_READWRITE_PASSWORD=$(openssl rand -base64 32)
+    log_success "Generated: ${APP_READWRITE_PASSWORD:0:8}... (32 characters)"
+else
+    log_info "Using provided APP_READWRITE_PASSWORD"
+fi
+
+if [ -z "${PROXYSQL_ADMIN_PASSWORD:-}" ]; then
+    log_info "Generating secure PROXYSQL_ADMIN_PASSWORD..."
+    PROXYSQL_ADMIN_PASSWORD=$(openssl rand -base64 32)
+    log_success "Generated: ${PROXYSQL_ADMIN_PASSWORD:0:8}... (32 characters)"
+else
+    log_info "Using provided PROXYSQL_ADMIN_PASSWORD"
+fi
+
 echo ""
 log_warn "⚠️  IMPORTANT: Save these passwords securely!"
-log_warn "   POSTGRES_PASSWORD: $POSTGRES_PASSWORD"
-log_warn "   REPMGR_PASSWORD: $REPMGR_PASSWORD"
+log_warn "   POSTGRES_PASSWORD:       $POSTGRES_PASSWORD"
+log_warn "   REPMGR_PASSWORD:         $REPMGR_PASSWORD"
+log_warn "   APP_READONLY_PASSWORD:   $APP_READONLY_PASSWORD"
+log_warn "   APP_READWRITE_PASSWORD:  $APP_READWRITE_PASSWORD"
+log_warn "   PROXYSQL_ADMIN_PASSWORD: $PROXYSQL_ADMIN_PASSWORD"
 echo ""
 
 # Set shared variables in Railway
@@ -42,6 +69,9 @@ log_info "Setting Railway environment variables..."
 
 railway variables --set "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
 railway variables --set "REPMGR_PASSWORD=$REPMGR_PASSWORD"
+railway variables --set "APP_READONLY_PASSWORD=$APP_READONLY_PASSWORD"
+railway variables --set "APP_READWRITE_PASSWORD=$APP_READWRITE_PASSWORD"
+railway variables --set "PROXYSQL_ADMIN_PASSWORD=$PROXYSQL_ADMIN_PASSWORD"
 railway variables --set "PRIMARY_HINT=pg-1"
 
 log_success "Shared variables set successfully!"

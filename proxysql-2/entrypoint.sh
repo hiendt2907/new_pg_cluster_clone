@@ -3,13 +3,15 @@ set -euo pipefail
 
 # Environment variables
 : "${PROXYSQL_ADMIN_USER:=admin}"
-: "${PROXYSQL_ADMIN_PASSWORD:=admin}"
+: "${PROXYSQL_ADMIN_PASSWORD:=$(openssl rand -base64 32)}"  # Auto-generate if not set
 : "${POSTGRES_USER:=postgres}"
 : "${POSTGRES_PASSWORD:=postgrespass}"
 : "${REPMGR_USER:=repmgr}"
 : "${REPMGR_PASSWORD:=repmgrpass}"
 : "${PG_NODES:=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal,pg-4.railway.internal}"
 : "${MONITOR_INTERVAL:=5}"
+: "${APP_READONLY_PASSWORD:=$(openssl rand -base64 32)}"  # Read-only app user
+: "${APP_READWRITE_PASSWORD:=$(openssl rand -base64 32)}"  # Read-write app user
 
 log() { echo "[$(date -Iseconds)] [proxysql] $*"; }
 
@@ -21,7 +23,7 @@ datadir="/var/lib/proxysql"
 admin_variables=
 {
     admin_credentials="${PROXYSQL_ADMIN_USER}:${PROXYSQL_ADMIN_PASSWORD}"
-    pgsql_ifaces="0.0.0.0:6132"
+    pgsql_ifaces="127.0.0.1:6132"  # SECURITY: Localhost only, never expose publicly
 }
 
 pgsql_variables=
@@ -71,6 +73,22 @@ pgsql_users=
         default_hostgroup = 1
         max_connections=100
         default_schema="repmgr"
+        active = 1
+    },
+    {
+        username = "app_readonly"
+        password = "${APP_READONLY_PASSWORD}"
+        default_hostgroup = 2
+        max_connections=2000
+        default_schema="postgres"
+        active = 1
+    },
+    {
+        username = "app_readwrite"
+        password = "${APP_READWRITE_PASSWORD}"
+        default_hostgroup = 1
+        max_connections=3000
+        default_schema="postgres"
         active = 1
     }
 )

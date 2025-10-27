@@ -454,6 +454,15 @@ main() {
     # Generate cluster initialization summary
     log_cluster_info "$proxy_choice"
     
+    # Generate comprehensive security information
+    log_info ""
+    log_info "Generating comprehensive security information..."
+    if [ -f "$PROJECT_DIR/scripts/generate-security-info.sh" ]; then
+        bash "$PROJECT_DIR/scripts/generate-security-info.sh" "cluster-security-info.txt"
+    else
+        log_warn "generate-security-info.sh not found, skipping security info generation"
+    fi
+    
     log_info ""
     log_info "Next steps:"
     log_info "1. Check deployment status: railway status"

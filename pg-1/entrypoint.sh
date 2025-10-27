@@ -9,6 +9,8 @@ IFS=$'\n\t'
 : "${REPMGR_PASSWORD:=repmgrpass}"
 : "${POSTGRES_USER:=postgres}"
 : "${POSTGRES_PASSWORD:=postgrespass}"
+: "${APP_READONLY_PASSWORD:=$(openssl rand -base64 32)}"
+: "${APP_READWRITE_PASSWORD:=$(openssl rand -base64 32)}"
 : "${PG_PORT:=5432}"
 : "${REPMGR_CONF:=/etc/repmgr/repmgr.conf}"
 : "${IS_WITNESS:=false}"
@@ -113,8 +115,11 @@ find_new_primary() {
 
 write_postgresql_conf() {
   cat > "$PGDATA/postgresql.conf" <<EOF
+# Network
 listen_addresses = '*'
 port = ${PG_PORT}
+
+# Replication
 wal_level = replica
 max_wal_senders = 10
 wal_keep_size = '5GB'
@@ -123,17 +128,59 @@ hot_standby = on
 hot_standby_feedback = on
 wal_log_hints = on
 shared_preload_libraries = 'repmgr'
+
+# Security & Audit Logging
+log_connections = on
+log_disconnections = on
+log_line_prefix = '%t [%p]: user=%u,db=%d,app=%a,client=%h '
+log_statement = 'ddl'
+log_min_duration_statement = 1000
+log_checkpoints = on
+log_lock_waits = on
+
+# SSL/TLS (if certificates exist)
+ssl = off
+# ssl_cert_file = 'server.crt'
+# ssl_key_file = 'server.key'
+# ssl_ca_file = 'root.crt'
+
+# Performance
+shared_buffers = 256MB
+work_mem = 16MB
+maintenance_work_mem = 128MB
+effective_cache_size = 1GB
+random_page_cost = 1.1
+
+# Statement timeout (prevent runaway queries)
+statement_timeout = 300000
 EOF
 }
 
 write_pg_hba() {
   cat > "$PGDATA/pg_hba.conf" <<EOF
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
+# Local connections (trusted for admin tasks)
 local   all             all                                     trust
-host    all             all             0.0.0.0/0               md5
-host    all             all             ::/0                    md5
+
+# Application users (require password, prefer SSL in production)
+host    all             app_readonly    0.0.0.0/0               md5
+host    all             app_readwrite   0.0.0.0/0               md5
+host    all             app_readonly    ::/0                    md5
+host    all             app_readwrite   ::/0                    md5
+
+# Admin and repmgr users
+host    all             postgres        0.0.0.0/0               md5
+host    all             postgres        ::/0                    md5
+host    all             ${REPMGR_USER}  0.0.0.0/0               md5
+host    all             ${REPMGR_USER}  ::/0                    md5
+
+# Replication connections
 host    replication     ${REPMGR_USER}  0.0.0.0/0               md5
 host    replication     ${REPMGR_USER}  ::/0                    md5
+
+# NOTE: For production, consider changing to 'hostssl' to require SSL/TLS
+# hostssl all             app_readonly    0.0.0.0/0               md5
+# hostssl all             app_readwrite   0.0.0.0/0               md5
 EOF
 }
 
@@ -199,6 +246,33 @@ init_primary() {
 
   gosu postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_database WHERE datname='${REPMGR_DB}'" | grep -q 1 \
     || gosu postgres psql -U "$POSTGRES_USER" -c "CREATE DATABASE ${REPMGR_DB} OWNER ${REPMGR_USER};"
+
+  # Create application users with limited permissions
+  log "Creating application users..."
+  
+  # Read-only user
+  gosu postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_roles WHERE rolname='app_readonly'" | grep -q 1 \
+    || gosu postgres psql -U "$POSTGRES_USER" -c "CREATE USER app_readonly WITH PASSWORD '${APP_READONLY_PASSWORD:-$(openssl rand -base64 32)}';"
+  
+  gosu postgres psql -U "$POSTGRES_USER" <<-EOSQL
+    GRANT CONNECT ON DATABASE postgres TO app_readonly;
+    GRANT USAGE ON SCHEMA public TO app_readonly;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_readonly;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app_readonly;
+EOSQL
+  
+  # Read-write user
+  gosu postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_roles WHERE rolname='app_readwrite'" | grep -q 1 \
+    || gosu postgres psql -U "$POSTGRES_USER" -c "CREATE USER app_readwrite WITH PASSWORD '${APP_READWRITE_PASSWORD:-$(openssl rand -base64 32)}';"
+  
+  gosu postgres psql -U "$POSTGRES_USER" <<-EOSQL
+    GRANT CONNECT ON DATABASE postgres TO app_readwrite;
+    GRANT USAGE ON SCHEMA public TO app_readwrite;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_readwrite;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_readwrite;
+EOSQL
+
+  log "Application users created successfully"
 
   gosu postgres repmgr -f "$REPMGR_CONF" primary register --force
   write_last_primary "$NODE_NAME"
