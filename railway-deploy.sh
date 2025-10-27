@@ -72,13 +72,18 @@ create_service() {
     # Change to service directory
     cd "$PROJECT_DIR/$service_dir"
     
-    # Add service
+    # Add service (provide empty input to skip variable prompts)
     log_info "  Adding service to Railway..."
-    ADD_OUTPUT=$(railway add --service "$service_name" 2>&1)
+    ADD_OUTPUT=$(printf "Empty Service\n%s\n\n" "$service_name" | railway add 2>&1)
     
     if echo "$ADD_OUTPUT" | grep -qi "already exists"; then
         log_warn "  Service '$service_name' already exists"
-    elif echo "$ADD_OUTPUT" | grep -qi "created"; then
+    elif echo "$ADD_OUTPUT" | grep -qi "created\|service creation limit"; then
+        if echo "$ADD_OUTPUT" | grep -qi "service creation limit"; then
+            log_error "  Hit Railway service creation limit (25/day)"
+            log_info "  Delete old services or wait until tomorrow"
+            return 1
+        fi
         log_success "  Service '$service_name' created successfully"
     else
         log_info "  Railway add output: $ADD_OUTPUT"
