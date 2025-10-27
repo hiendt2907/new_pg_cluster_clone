@@ -12,7 +12,7 @@ conn = psycopg2.connect(
     port=5432,
     database="postgres",
     user="postgres",
-    password="L0ngS3cur3P@ssw0rd",
+    password="YOUR_SECURE_PASSWORD",
     target_session_attrs="read-write",  # Auto-select writable host
     connect_timeout=3,
     options="-c statement_timeout=5000"  # 5s timeout for trading
@@ -28,7 +28,7 @@ connection_pool = pool.ThreadedConnectionPool(
     port=5432,
     database="postgres",
     user="postgres",
-    password="L0ngS3cur3P@ssw0rd",
+    password="YOUR_SECURE_PASSWORD",
     target_session_attrs="any",  # Accept any host (both ProxySQL handle routing)
     connect_timeout=2
 )
@@ -44,7 +44,7 @@ const pool = new Pool({
   port: 5432,
   database: 'postgres',
   user: 'postgres',
-  password: 'L0ngS3cur3P@ssw0rd',
+  password: 'YOUR_SECURE_PASSWORD',
   max: 5000,                    // Match ProxySQL max_connections
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -57,7 +57,7 @@ const pool1 = new Pool({
   port: 5432,
   database: 'postgres',
   user: 'postgres',
-  password: 'L0ngS3cur3P@ssw0rd',
+  password: 'YOUR_SECURE_PASSWORD',
   max: 2500
 });
 
@@ -66,7 +66,7 @@ const pool2 = new Pool({
   port: 5432,
   database: 'postgres',
   user: 'postgres',
-  password: 'L0ngS3cur3P@ssw0rd',
+  password: 'YOUR_SECURE_PASSWORD',
   max: 2500
 });
 
@@ -96,7 +96,7 @@ import (
 
 func main() {
     // Multi-host connection string
-    connString := "postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?pool_max_conns=5000&pool_min_conns=100&pool_max_conn_lifetime=1h&target_session_attrs=any"
+    connString := "postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?pool_max_conns=5000&pool_min_conns=100&pool_max_conn_lifetime=1h&target_session_attrs=any"
 
     pool, err := pgxpool.New(context.Background(), connString)
     if err != nil {
@@ -123,7 +123,7 @@ public class TradingDBConnection {
     public static void main(String[] args) {
         String jdbcUrl = "jdbc:postgresql://proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres" +
                          "?user=postgres" +
-                         "&password=L0ngS3cur3P@ssw0rd" +
+                         "&password=YOUR_SECURE_PASSWORD" +
                          "&targetServerType=any" +  // Accept any host
                          "&connectTimeout=2" +
                          "&socketTimeout=5" +
@@ -144,7 +144,7 @@ import com.zaxxer.hikari.HikariDataSource;
 HikariConfig config = new HikariConfig();
 config.setJdbcUrl("jdbc:postgresql://proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres");
 config.setUsername("postgres");
-config.setPassword("L0ngS3cur3P@ssw0rd");
+config.setPassword("YOUR_SECURE_PASSWORD");
 config.setMaximumPoolSize(5000);
 config.setMinimumIdle(100);
 config.setConnectionTimeout(2000);
@@ -164,7 +164,7 @@ conn = PG.connect(
   port: 5432,
   dbname: 'postgres',
   user: 'postgres',
-  password: 'L0ngS3cur3P@ssw0rd',
+  password: 'YOUR_SECURE_PASSWORD',
   connect_timeout: 2,
   target_session_attrs: 'any'
 )
@@ -178,7 +178,7 @@ DB_POOL = ConnectionPool.new(size: 100, timeout: 5) do
     port: 5432,
     dbname: 'postgres',
     user: 'postgres',
-    password: 'L0ngS3cur3P@ssw0rd'
+    password: 'YOUR_SECURE_PASSWORD'
   )
 end
 
@@ -194,7 +194,7 @@ var connString = "Host=proxysql-production.railway.app,proxysql-2-production.rai
                  "Port=5432;" +
                  "Database=postgres;" +
                  "Username=postgres;" +
-                 "Password=L0ngS3cur3P@ssw0rd;" +
+                 "Password=YOUR_SECURE_PASSWORD;" +
                  "Target Session Attributes=any;" +
                  "Timeout=2;" +
                  "Command Timeout=5;" +
@@ -210,7 +210,7 @@ Console.WriteLine($"Connected to: {conn.Host}");
 
 ### Standard Format
 ```bash
-postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=any
+postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=any
 ```
 
 ### Parameters Explained
@@ -233,13 +233,13 @@ pools = [
         minconn=50, maxconn=2500,
         host="proxysql-production.railway.app",
         port=5432, database="postgres",
-        user="postgres", password="L0ngS3cur3P@ssw0rd"
+        user="postgres", password="YOUR_SECURE_PASSWORD"
     ),
     pool.ThreadedConnectionPool(
         minconn=50, maxconn=2500,
         host="proxysql-2-production.railway.app",
         port=5432, database="postgres",
-        user="postgres", password="L0ngS3cur3P@ssw0rd"
+        user="postgres", password="YOUR_SECURE_PASSWORD"
     )
 ]
 
@@ -289,7 +289,7 @@ export DB_HOSTS="proxysql-production-abc123.up.railway.app,proxysql-2-production
 export DB_PORT="5432"
 export DB_NAME="postgres"
 export DB_USER="postgres"
-export DB_PASS="L0ngS3cur3P@ssw0rd"
+export DB_PASS="YOUR_SECURE_PASSWORD"
 
 # Full connection string
 export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOSTS}:${DB_PORT}/${DB_NAME}?target_session_attrs=any&connect_timeout=2"
@@ -298,7 +298,7 @@ export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOSTS}:${DB_PORT}/$
 ### Step 3: Test Failover
 ```bash
 # Terminal 1: Connect via multi-host
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql "postgresql://postgres@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=any"
+PGPASSWORD=YOUR_SECURE_PASSWORD psql "postgresql://postgres@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=any"
 
 # Terminal 2: Stop proxysql service
 railway service proxysql
@@ -320,10 +320,10 @@ SELECT pg_backend_pid(), inet_server_addr();
 
 ```bash
 # Check which ProxySQL is handling connections
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql -c \
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql -c \
   "SELECT hostgroup_id, srv_host, status, ConnUsed, Queries FROM stats_pgsql_connection_pool ORDER BY Queries DESC;"
 
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql-2-production.railway.app -p 6132 -U admin -d proxysql -c \
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql-2-production.railway.app -p 6132 -U admin -d proxysql -c \
   "SELECT hostgroup_id, srv_host, status, ConnUsed, Queries FROM stats_pgsql_connection_pool ORDER BY Queries DESC;"
 ```
 

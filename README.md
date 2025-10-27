@@ -417,8 +417,8 @@ Nếu muốn deploy thủ công qua Railway Dashboard:
 Set via `./railway-setup-shared-vars.sh`:
 
 ```bash
-POSTGRES_PASSWORD=L0ngS3cur3P@ssw0rd   # PostgreSQL superuser password
-REPMGR_PASSWORD=L0ngS3cur3P@ssw0rd     # repmgr user password
+POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD   # PostgreSQL superuser password
+REPMGR_PASSWORD=YOUR_SECURE_PASSWORD     # repmgr user password
 PRIMARY_HINT=pg-1                      # Hint for initial primary
 ```
 
@@ -466,7 +466,7 @@ PEERS=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal
 **proxysql/.env** (and proxysql-2/.env):
 ```bash
 PROXYSQL_ADMIN_USER=admin
-PROXYSQL_ADMIN_PASSWORD=L0ngS3cur3P@ssw0rd
+PROXYSQL_ADMIN_PASSWORD=YOUR_SECURE_PASSWORD
 PG_NODES=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal,pg-4.railway.internal
 MONITOR_INTERVAL=5
 ```
@@ -549,7 +549,7 @@ postgresql://user:password@host1:port1,host2:port2/database?params
 
 **Example**:
 ```bash
-postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=any&connect_timeout=2
+postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=any&connect_timeout=2
 ```
 
 ### Connection Examples by Language
@@ -567,7 +567,7 @@ connection_pool = pool.ThreadedConnectionPool(
     port=5432,
     database="postgres",
     user="postgres",
-    password="L0ngS3cur3P@ssw0rd",
+    password="YOUR_SECURE_PASSWORD",
     target_session_attrs="any",
     connect_timeout=2
 )
@@ -588,7 +588,7 @@ const pool = new Pool({
   port: 5432,
   database: 'postgres',
   user: 'postgres',
-  password: 'L0ngS3cur3P@ssw0rd',
+  password: 'YOUR_SECURE_PASSWORD',
   max: 5000,
   connectionTimeoutMillis: 2000
 });
@@ -600,7 +600,7 @@ const result = await pool.query('SELECT * FROM trades');
 ```go
 import "github.com/jackc/pgx/v5/pgxpool"
 
-connString := "postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?pool_max_conns=5000"
+connString := "postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?pool_max_conns=5000"
 
 pool, err := pgxpool.New(context.Background(), connString)
 defer pool.Close()
@@ -611,7 +611,7 @@ defer pool.Close()
 HikariConfig config = new HikariConfig();
 config.setJdbcUrl("jdbc:postgresql://proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres");
 config.setUsername("postgres");
-config.setPassword("L0ngS3cur3P@ssw0rd");
+config.setPassword("YOUR_SECURE_PASSWORD");
 config.setMaximumPoolSize(5000);
 
 HikariDataSource dataSource = new HikariDataSource(config);
@@ -650,7 +650,7 @@ gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
 
 #### Connect to ProxySQL admin interface
 ```bash
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql
 ```
 
 #### Check backend servers
@@ -748,7 +748,7 @@ psql -h pg-1.railway.internal -U postgres -d postgres
 railway variables list --service proxysql | grep REPMGR
 
 # 3. Manually add servers (temporary)
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql.railway.app -p 6132 -U admin -d proxysql
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql.railway.app -p 6132 -U admin -d proxysql
 INSERT INTO pgsql_servers (hostgroup_id, hostname, port) VALUES (1, 'pg-1.railway.internal', 5432);
 LOAD PGSQL SERVERS TO RUNTIME;
 ```
@@ -931,15 +931,15 @@ EOF
 ```
 
 **Sets**:
-- `POSTGRES_PASSWORD=L0ngS3cur3P@ssw0rd`
-- `REPMGR_PASSWORD=L0ngS3cur3P@ssw0rd`
+- `POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD`
+- `REPMGR_PASSWORD=YOUR_SECURE_PASSWORD`
 - `PRIMARY_HINT=pg-1`
 
 **Command**:
 ```bash
 railway variables set \
-  POSTGRES_PASSWORD=L0ngS3cur3P@ssw0rd \
-  REPMGR_PASSWORD=L0ngS3cur3P@ssw0rd \
+  POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD \
+  REPMGR_PASSWORD=YOUR_SECURE_PASSWORD \
   PRIMARY_HINT=pg-1
 ```
 

@@ -29,7 +29,7 @@ ProxySQL requires a **persistent volume** to store configuration:
 ## Configuration
 Environment variables (set via Railway):
 - `PROXYSQL_ADMIN_USER=admin`
-- `PROXYSQL_ADMIN_PASSWORD=L0ngS3cur3P@ssw0rd`
+- `PROXYSQL_ADMIN_PASSWORD=YOUR_SECURE_PASSWORD`
 - `PG_NODES=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal,pg-4.railway.internal`
 - `MONITOR_INTERVAL=5`
 
@@ -39,7 +39,7 @@ Environment variables (set via Railway):
 railway ssh --service proxysql
 
 # Connect to admin interface
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h 127.0.0.1 -p 6132 -U admin -d proxysql
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h 127.0.0.1 -p 6132 -U admin -d proxysql
 
 # Check server status
 SELECT hostgroup_id,hostname,port,status FROM stats_pgsql_connection_pool;
@@ -54,7 +54,7 @@ SELECT * FROM pgsql_query_rules;
 # Connect to port 6133 (PostgreSQL traffic)
 
 # Example connection string:
-postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql.railway.internal:6133/postgres
+postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql.railway.internal:6133/postgres
 ```
 
 ## Monitoring
@@ -63,7 +63,7 @@ postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql.railway.internal:6133/postgres
 railway logs --service proxysql
 
 # View stats
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql.railway.internal -p 6132 -U admin -d proxysql \
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql.railway.internal -p 6132 -U admin -d proxysql \
   -c "SELECT * FROM stats_pgsql_global;"
 ```
 

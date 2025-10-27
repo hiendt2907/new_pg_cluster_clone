@@ -218,7 +218,7 @@ main() {
     log_info "  Witness does not need a volume"
     
     # Add volumes for ProxySQL if option 2 is selected
-    if [ "$PROXY_CHOICE" == "2" ]; then
+    if [ "$proxy_choice" == "2" ]; then
         log_info ""
         log_info "Adding volumes to ProxySQL instances..."
         add_volume "proxysql" "/var/lib/proxysql"

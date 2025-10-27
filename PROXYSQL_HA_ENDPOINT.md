@@ -48,10 +48,10 @@ Railway Dashboard:
 #### 4. Client Connection
 ```bash
 # Primary endpoint (proxysql)
-postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-production.railway.app:5432/postgres
+postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-production.railway.app:5432/postgres
 
 # Fallback endpoint (proxysql-2) - if primary fails
-postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-2-production.railway.app:5432/postgres
+postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-2-production.railway.app:5432/postgres
 ```
 
 ### Client-Side Failover (Recommended for Trading)
@@ -59,7 +59,7 @@ postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-2-production.railway.app:5432/
 #### Option 1: PostgreSQL Native Connection String
 ```bash
 # Multi-host connection string with automatic failover
-postgresql://postgres:L0ngS3cur3P@ssw0rd@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=read-write
+postgresql://postgres:YOUR_SECURE_PASSWORD@proxysql-production.railway.app:5432,proxysql-2-production.railway.app:5432/postgres?target_session_attrs=read-write
 ```
 
 #### Option 2: Application-Level HAProxy/DNS Round-Robin
@@ -107,10 +107,10 @@ backend postgres_backend
 ```bash
 # Check ProxySQL health
 curl -s https://proxysql-production.railway.app:6132/health || \
-  PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql -c "SELECT 1;"
+  PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql -c "SELECT 1;"
 
 # Check backend pool
-PGPASSWORD=L0ngS3cur3P@ssw0rd psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql \
+PGPASSWORD=YOUR_SECURE_PASSWORD psql -h proxysql-production.railway.app -p 6132 -U admin -d proxysql \
   -c "SELECT hostgroup_id,hostname,status,Queries,Latency_us FROM stats_pgsql_connection_pool;"
 ```
 
