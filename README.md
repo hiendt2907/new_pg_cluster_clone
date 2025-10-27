@@ -6,49 +6,81 @@
 [![ProxySQL](https://img.shields.io/badge/ProxySQL-3.0.2%20BETA-orange)](https://proxysql.com/)
 [![Railway](https://img.shields.io/badge/Railway-Platform-purple)](https://railway.app/)
 
-**High-performance PostgreSQL cluster** với automatic failover, connection pooling, và query routing - optimized for high-concurrency with 60,000 concurrent connections.
+**Production-ready PostgreSQL cluster** with automatic failover, connection pooling, and security hardening - optimized for 60,000+ concurrent connections.
+
+---
+
+## � Quick Start
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/hiendt2907/new_pg_cluster_clone.git
+cd new_pg_cluster_clone
+
+# 2. Login to Railway
+railway login
+
+# 3. Link to your project
+railway link
+
+# 4. Generate secure passwords (auto)
+./railway-setup-shared-vars.sh
+
+# 5. Deploy cluster (choose option 2: ProxySQL HA)
+./railway-deploy.sh
+
+# 6. Save credentials (generated automatically)
+cat cluster-security-info.txt  # Save to password manager
+rm cluster-security-info.txt   # Delete after saving
+
+# 7. Get ProxySQL public URL
+railway service proxysql && railway domain
+
+# 8. Connect!
+psql "postgresql://app_readwrite:<password>@<proxysql-domain>:5432/postgres"
+```
+
+**Read More:**
+- 📖 [Full Setup Guide](#-cài-đặt-và-deploy)
+- 🔒 [Security Guide](SECURITY.md)
+- 📈 [Scaling Guide](SCALING_GUIDE.md)
 
 ---
 
 ## 📖 Table of Contents
 
-1. [Giới thiệu](#-giới-thiệu)
-2. [Kiến trúc hệ thống](#-kiến-trúc-hệ-thống)
-3. [Các tính năng chính](#-các-tính-năng-chính)
-4. [Yêu cầu](#-yêu-cầu)
-5. [Cấu trúc project](#-cấu-trúc-project)
-6. [Cài đặt và Deploy](#-cài-đặt-và-deploy)
-7. [Cấu hình chi tiết](#-cấu-hình-chi-tiết)
-8. [Kết nối từ Client](#-kết-nối-từ-client)
-9. [Monitoring & Troubleshooting](#-monitoring--troubleshooting)
-10. [Scripts Documentation](#-scripts-documentation)
-11. [Advanced Topics](#-advanced-topics)
+1. [Overview](#-overview)
+2. [Architecture](#-architecture)
+3. [Features](#-features)
+4. [Requirements](#-requirements)
+5. [Setup & Deployment](#-cài-đặt-và-deploy)
+6. [Client Connections](#-kết-nối-từ-client)
+7. [Monitoring](#-monitoring--troubleshooting)
+8. [Scaling](#-scaling)
+9. [Security](#-security)
+10. [Scripts Reference](#-scripts-documentation)
 
 ---
 
-## 🎯 Giới thiệu
+## 🎯 Overview
 
-Dự án này cung cấp **PostgreSQL High Availability Cluster** được thiết kế để chạy trên **Railway platform** với các đặc điểm:
-
-### Vấn đề giải quyết
-- ✅ **High Availability**: Tự động failover khi primary node bị lỗi
-- ✅ **Scalability**: 4 PostgreSQL nodes + witness = 5-node cluster
-- ✅ **Connection Pooling**: 60,000 concurrent connections qua ProxySQL HA pair
-- ✅ **Query Routing**: Tự động route write queries → primary, read queries → standbys
-- ✅ **High Performance**: 32 threads, 20s poll timeout, connection multiplexing
-- ✅ **Railway Platform**: Fixes cho IPv6, dynamic hostnames, và container networking
+### What This Solves
+- ✅ **High Availability**: Automatic failover when primary fails (10-30s RTO)
+- ✅ **Scalability**: 4 PostgreSQL nodes + witness + horizontal scaling support
+- ✅ **Connection Pooling**: 60,000 concurrent connections via ProxySQL HA pair
+- ✅ **Query Routing**: Auto-route writes → primary, reads → standbys
+- ✅ **Security**: Strong passwords, audit logging, application user separation
+- ✅ **Railway Optimized**: IPv6, dynamic hostnames, container networking
 
 ### Use Cases
-- 🚀 **Trading Systems**: High-frequency trading requiring low-latency and high-throughput
-- 💼 **Production Databases**: Business-critical applications cần 99.9% uptime
-- 📊 **Read-Heavy Workloads**: Distribute read queries across 3 standby nodes
-- 🔄 **Disaster Recovery**: Automatic failover trong 10-30 giây
+- 🚀 **High-Performance Applications**: Low-latency, high-throughput workloads
+- 💼 **Production Databases**: Mission-critical apps requiring 99.9% uptime
+- 📊 **Read-Heavy Workloads**: Distribute reads across 3 standby nodes
+- 🔄 **Disaster Recovery**: Automatic failover with no manual intervention
 
 ---
 
-## 🏗️ Kiến trúc hệ thống
-
-### Architecture Diagram
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
