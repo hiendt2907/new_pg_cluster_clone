@@ -61,60 +61,44 @@ fi
 log_success "Project: $PROJECT_NAME (ID: $PROJECT_ID)"
 echo ""
 
-# Function: Create Railway service
-create_service() {
+# Function: Create empty Railway service (no variables, no deploy yet)
+create_empty_service() {
+    local service_name=$1
+    
+    log_info "Creating empty service: $service_name"
+    
+    # Add empty service using --service flag
+    railway add --service "$service_name" 2>&1 | grep -i "created\|exists" || {
+        log_warn "  Service add response received"
+    }
+    
+    sleep 1
+}
+
+# Function: Set environment variables for a service
+set_service_variables() {
     local service_name=$1
     local service_dir=$2
     
-    log_info "Creating service: $service_name"
+    log_info "Setting variables for: $service_name"
     
-    cd "$PROJECT_DIR/$service_dir" || {
-        log_error "  Directory not found: $service_dir"
+    # Link to service
+    railway service "$service_name" 2>/dev/null || {
+        log_error "  Failed to link to service $service_name"
         return 1
     }
     
-    # Add service with auto-answers for Railway CLI prompts:
-    # 1. "What do you need?" -> "Empty Service"
-    # 2. "Enter a service name" -> service_name
-    # 3. "Enter a variable" -> (empty, skip variables)
-    log_info "  Adding to Railway..."
-    ADD_OUTPUT=$(printf "Empty Service\n%s\n\n" "$service_name" | railway add 2>&1)
-    
-    if echo "$ADD_OUTPUT" | grep -qi "service creation limit"; then
-        log_error "  Railway service creation limit reached (25/day)"
-        log_info "  Delete old projects at: https://railway.com/dashboard"
-        cd "$PROJECT_DIR"
-        return 1
-    elif echo "$ADD_OUTPUT" | grep -qi "already exists"; then
-        log_warn "  Service already exists, reusing..."
-    else
-        log_success "  Service created"
-    fi
-    
-    sleep 2
-    
-    # Link to service
-    log_info "  Linking to service..."
-    if ! railway service "$service_name" 2>/dev/null; then
-        log_error "  Failed to link to service $service_name"
-        cd "$PROJECT_DIR"
-        return 1
-    fi
-    
-    # Set environment variables from .env
-    if [ -f ".env" ]; then
-        log_info "  Setting environment variables..."
+    # Set environment variables from .env file
+    if [ -f "$PROJECT_DIR/$service_dir/.env" ]; then
         while IFS='=' read -r key value; do
             [[ -z "$key" || "$key" =~ ^# ]] && continue
             value=$(echo "$value" | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")
-            railway variables --set "$key=$value" --skip-deploys 2>/dev/null || {
-                log_warn "    Failed to set $key (may already exist)"
-            }
-        done < .env
-        log_success "  Variables configured"
+            railway variables --set "$key=$value" --skip-deploys 2>/dev/null || true
+        done < "$PROJECT_DIR/$service_dir/.env"
+        log_success "  Variables set"
+    else
+        log_warn "  No .env file found"
     fi
-    
-    cd "$PROJECT_DIR"
 }
 
 # Function: Add volume to service
@@ -187,20 +171,19 @@ deploy_service() {
 # MAIN DEPLOYMENT FLOW
 # ============================================================================
 
-log_info "Step 1: Creating all services..."
+log_info "Step 1: Creating all empty services..."
 echo ""
 
-# PostgreSQL nodes
-create_service "pg-1" "pg-1" || exit 1
-create_service "pg-2" "pg-2" || exit 1
-create_service "pg-3" "pg-3" || exit 1
-create_service "pg-4" "pg-4" || exit 1
-create_service "witness" "witness" || exit 1
+# Create all services first (empty, no variables)
+create_empty_service "pg-1"
+create_empty_service "pg-2"
+create_empty_service "pg-3"
+create_empty_service "pg-4"
+create_empty_service "witness"
 
-# ProxySQL HA
 if [ "$DEPLOY_PROXYSQL" = true ]; then
-    create_service "proxysql" "proxysql" || exit 1
-    create_service "proxysql-2" "proxysql-2" || exit 1
+    create_empty_service "proxysql"
+    create_empty_service "proxysql-2"
 fi
 
 echo ""
@@ -209,7 +192,27 @@ echo ""
 
 # ============================================================================
 
-log_info "Step 2: Adding persistent volumes..."
+log_info "Step 2: Setting environment variables for each service..."
+echo ""
+
+set_service_variables "pg-1" "pg-1"
+set_service_variables "pg-2" "pg-2"
+set_service_variables "pg-3" "pg-3"
+set_service_variables "pg-4" "pg-4"
+set_service_variables "witness" "witness"
+
+if [ "$DEPLOY_PROXYSQL" = true ]; then
+    set_service_variables "proxysql" "proxysql"
+    set_service_variables "proxysql-2" "proxysql-2"
+fi
+
+echo ""
+log_success "Variables configured for all services"
+echo ""
+
+# ============================================================================
+
+log_info "Step 3: Adding persistent volumes..."
 echo ""
 
 # PostgreSQL data volumes
@@ -237,7 +240,7 @@ echo ""
 
 # ============================================================================
 
-log_info "Step 3: Deploying services in correct sequence..."
+log_info "Step 4: Deploying services in correct sequence..."
 echo ""
 
 # Deploy primary first
