@@ -811,53 +811,172 @@ SELECT * FROM global_variables WHERE variable_name LIKE '%connection%';
 
 ## 📜 Scripts Documentation
 
-### 1. railway-deploy.sh (8.6KB)
+### Deployment Scripts
 
-**Purpose**: Interactive deployment script
+#### 1. railway-setup-shared-vars.sh
+
+**Purpose**: Generate and set shared passwords for entire cluster
+
+**Usage**:
+```bash
+./railway-setup-shared-vars.sh
+```
+
+**Features**:
+- Auto-generates 32-char secure passwords (OpenSSL)
+- Sets Railway environment variables (environment-level scope)
+- Passwords shared across all nodes via `${{VARIABLE_NAME}}` references
+
+**Generated Variables**:
+- `POSTGRES_PASSWORD` - PostgreSQL superuser password
+- `REPMGR_PASSWORD` - repmgr replication user password
+- `PRIMARY_HINT` - Bootstrap primary node (default: pg-1)
+
+#### 2. railway-deploy.sh
+
+**Purpose**: Interactive deployment with cluster info logging
 
 **Usage**:
 ```bash
 ./railway-deploy.sh
+# Choose proxy option:
+#   1) No proxy
+#   2) ProxySQL 3.0 BETA (2 instances for HA) ← Recommended
+#   3) pgpool-II
 ```
 
 **Features**:
-- Prompts for proxy choice (none, ProxySQL, pgpool)
-- Detects existing services
-- Deploys in correct sequence
-- Sets environment variables
-- Creates volumes
+- Prompts for proxy choice
+- Deploys in correct sequence (pg-1 → witness → standbys → proxy)
+- Creates volumes automatically
+- **NEW**: Generates `cluster-info.txt` with connection info after deployment
+
+**Deployment Sequence**:
+```bash
+# 1. Deploy primary first
+pg-1 → wait 30s
+
+# 2. Deploy witness
+witness → wait 10s
+
+# 3. Deploy standbys in parallel
+pg-2, pg-3, pg-4 → wait for completion
+
+# 4. Deploy proxy (if selected)
+proxysql, proxysql-2 → parallel deployment
+
+# 5. Generate cluster-info.txt
+- Cluster credentials
+- Connection strings
+- ProxySQL endpoints
+- Monitoring commands
+```
+
+#### 3. railway-auto-deploy.sh
+
+**Purpose**: Automated deployment without prompts
+
+**Usage**:
+```bash
+./railway-auto-deploy.sh
+```
+
+**Features**:
+- No manual interaction required
+- Full cleanup option
+- Same deployment logic as railway-deploy.sh
+
+### Scaling Scripts
+
+#### 4. railway-add-node.sh ⭐ NEW
+
+**Purpose**: Add new PostgreSQL node to cluster
+
+**Usage**:
+```bash
+./railway-add-node.sh 5     # Add pg-5
+./railway-add-node.sh 6     # Add pg-6
+```
+
+**Features**:
+- ✅ Copy folder from pg-4 template
+- ✅ Auto-generate .env with NODE_NAME, NODE_ID
+- ✅ Create Railway service + volume
+- ✅ Deploy new node
+- ✅ Update ProxySQL configuration (both instances)
+- ✅ Redeploy ProxySQL to discover new node
 
 **Key Functions**:
 
-#### `create_service()`
 ```bash
-create_service() {
-    local service_name=$1    # pg-1, pg-2, etc.
-    local service_dir=$2     # Directory path
-    
-    # 1. Navigate to service directory
-    # 2. Link to Railway service (railway service <name>)
-    # 3. Set environment variables from .env file
-    # 4. Create volume (for PostgreSQL nodes)
-    # 5. Deploy (railway up --detach)
-}
+# Validate node number (must be >= 5)
+if [ "$NODE_NUM" -lt 5 ]; then
+    log_error "Node number must be >= 5 (pg-1 to pg-4 already exist)"
+    exit 1
+fi
+
+# Copy template
+cp -r "$PROJECT_DIR/pg-4" "$NODE_DIR"
+
+# Generate .env
+cat > "$NODE_DIR/.env" <<EOF
+NODE_NAME=$NODE_NAME
+NODE_ID=$NODE_NUM
+PEERS=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal
+POSTGRES_PASSWORD=\${{POSTGRES_PASSWORD}}
+REPMGR_PASSWORD=\${{REPMGR_PASSWORD}}
+PRIMARY_HINT=\${{PRIMARY_HINT}}
+EOF
+
+# Update ProxySQL
+for proxy in "proxysql" "proxysql-2"; do
+    NEW_NODES="${CURRENT_NODES},${NODE_NAME}.railway.internal"
+    sed -i "s|^: \"\${PG_NODES:=.*}|: \"\${PG_NODES:=$NEW_NODES}\"|" "$proxy/entrypoint.sh"
+    railway service "$proxy"
+    railway up --detach
+done
 ```
 
-#### `deploy_services()`
+#### 5. railway-remove-node.sh ⭐ NEW
+
+**Purpose**: Remove PostgreSQL node from cluster
+
+**Usage**:
 ```bash
-deploy_services() {
-    # 1. Deploy pg-1 first
-    create_service "pg-1" "pg-1"
-    sleep 30  # Wait for initialization
-    
-    # 2. Deploy witness
-    create_service "witness" "witness"
-    sleep 10
-    
-    # 3. Deploy standbys in parallel
-    create_service "pg-2" "pg-2" &
-    create_service "pg-3" "pg-3" &
-    create_service "pg-4" "pg-4" &
+./railway-remove-node.sh 5     # Remove pg-5
+./railway-remove-node.sh 6     # Remove pg-6
+```
+
+**Features**:
+- ✅ Protected: Cannot remove core nodes (pg-1 to pg-4)
+- ✅ Unregister from repmgr cluster
+- ✅ Delete Railway service (including volume data)
+- ✅ Remove from ProxySQL configuration
+- ✅ Redeploy ProxySQL instances
+- ✅ Delete local directory
+
+**Safety Checks**:
+```bash
+# Prevent removing core nodes
+if [ "$NODE_NUM" -le 4 ]; then
+    log_error "Cannot remove core nodes (pg-1 to pg-4)"
+    log_error "These are essential for cluster quorum"
+    exit 1
+fi
+
+# Confirmation prompt
+read -p "Are you sure? Type 'yes' to continue: " confirmation
+if [ "$confirmation" != "yes" ]; then
+    log_info "Operation cancelled"
+    exit 0
+fi
+```
+
+### Utility Scripts
+
+#### 6. railway-list-services.sh
+
+**Purpose**: List all Railway services in project
     wait
     sleep 60
     
@@ -997,38 +1116,86 @@ Volumes:
 
 ## 🎓 Advanced Topics
 
-### Scaling: Thêm PostgreSQL Node mới (pg-5)
+### Scaling: Thêm PostgreSQL Node mới
+
+#### Tự động với script (Recommended)
 
 ```bash
-# 1. Copy pg-4 folder
+# Thêm node thứ 5 (pg-5)
+./railway-add-node.sh 5
+
+# Thêm node thứ 6 (pg-6)
+./railway-add-node.sh 6
+
+# Script tự động:
+# ✅ Copy folder từ pg-4 template
+# ✅ Cập nhật .env với NODE_NAME, NODE_ID
+# ✅ Tạo Railway service và add volume
+# ✅ Deploy service mới
+# ✅ Cập nhật ProxySQL configuration
+# ✅ Redeploy ProxySQL instances
+```
+
+#### Thủ công (Manual)
+
+```bash
+# 1. Copy template và tạo folder mới
 cp -r pg-4 pg-5
 
-# 2. Update .env
+# 2. Update .env file
 cd pg-5
 cat > .env << 'EOF'
 NODE_NAME=pg-5
 NODE_ID=5
-PEERS=pg-1.railway.internal,pg-2.railway.internal
+PEERS=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal
+POSTGRES_PASSWORD=${{POSTGRES_PASSWORD}}
+REPMGR_PASSWORD=${{REPMGR_PASSWORD}}
+PRIMARY_HINT=${{PRIMARY_HINT}}
 EOF
 
-# 3. Deploy
+# 3. Deploy service
 cd ..
-railway service create pg-5
+railway add --service pg-5
 cd pg-5
 railway service pg-5
+railway variables --set "NODE_NAME=pg-5" --skip-deploys
+railway variables --set "NODE_ID=5" --skip-deploys
+echo "/var/lib/postgresql" | railway volume add
 railway up --detach
 
-# 4. SSH into pg-5 and register with repmgr
-railway ssh --service pg-5
-gosu postgres repmgr -f /etc/repmgr/repmgr.conf standby clone -h pg-1.railway.internal -U repmgr -d repmgr
-gosu postgres pg_ctl -D /var/lib/postgresql/data start
-gosu postgres repmgr -f /etc/repmgr/repmgr.conf standby register
+# 4. Update ProxySQL (edit proxysql/entrypoint.sh)
+# Thay đổi dòng:
+# : "${PG_NODES:=pg-1,...,pg-4.railway.internal}"
+# Thành:
+# : "${PG_NODES:=pg-1,...,pg-4.railway.internal,pg-5.railway.internal}"
 
-# 5. Update ProxySQL to include pg-5
-# Edit proxysql/entrypoint.sh:
-# PG_NODES=pg-1,pg-2,pg-3,pg-4,pg-5.railway.internal
+# 5. Redeploy ProxySQL
+cd ../proxysql
 railway service proxysql
 railway up --detach
+
+cd ../proxysql-2
+railway service proxysql-2
+railway up --detach
+
+# 6. Verify cluster
+railway ssh --service pg-1
+gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
+# Should show pg-5 as standby
+```
+
+### Scaling: Xóa PostgreSQL Node
+
+```bash
+# Xóa node pg-5 (chỉ xóa được node >= 5, core nodes pg-1 đến pg-4 bị protected)
+./railway-remove-node.sh 5
+
+# Script tự động:
+# ✅ Unregister node từ repmgr cluster
+# ✅ Xóa Railway service (kèm volume)
+# ✅ Remove khỏi ProxySQL configuration
+# ✅ Redeploy ProxySQL instances
+# ✅ Xóa local directory
 ```
 
 ### Manual Failover Testing
