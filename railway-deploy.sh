@@ -146,6 +146,180 @@ add_volume() {
     cd "$PROJECT_DIR"
 }
 
+# Function to log cluster initialization info
+log_cluster_info() {
+    local proxy_choice=$1
+    local info_file="$PROJECT_DIR/cluster-info.txt"
+    
+    log_info "=== PostgreSQL HA Cluster Initialization Summary ==="
+    
+    # Get environment passwords
+    POSTGRES_PASSWORD=$(railway variables | grep "POSTGRES_PASSWORD" | awk -F'=' '{print $2}' | tr -d ' ' 2>/dev/null || echo "")
+    REPMGR_PASSWORD=$(railway variables | grep "REPMGR_PASSWORD" | awk -F'=' '{print $2}' | tr -d ' ' 2>/dev/null || echo "")
+    PRIMARY_HINT=$(railway variables | grep "PRIMARY_HINT" | awk -F'=' '{print $2}' | tr -d ' ' 2>/dev/null || echo "pg-1")
+    
+    # Save to file
+    cat > "$info_file" <<EOF
+================================================================================
+PostgreSQL HA Cluster - Deployment Information
+Generated at: $(date -Iseconds)
+Project: $PROJECT_NAME (ID: $PROJECT_ID)
+================================================================================
+
+CLUSTER CREDENTIALS
+-------------------
+PostgreSQL User:      postgres
+PostgreSQL Password:  ${POSTGRES_PASSWORD:-<check Railway dashboard>}
+
+Repmgr User:          repmgr
+Repmgr Password:      ${REPMGR_PASSWORD:-<check Railway dashboard>}
+
+Primary Hint:         $PRIMARY_HINT
+
+
+CLUSTER ARCHITECTURE
+--------------------
+- PostgreSQL 17 with repmgr 5.5.0
+- 4 Data Nodes: pg-1, pg-2, pg-3, pg-4
+- 1 Witness Node: witness
+- Automatic failover: 10-30 seconds
+- Last-known-primary bootstrap enabled
+
+EOF
+
+    # Add proxy info if deployed
+    if [ "$proxy_choice" = "2" ]; then
+        cat >> "$info_file" <<EOF
+PROXYSQL HA LAYER (2 instances)
+--------------------------------
+- ProxySQL 3.0.2 BETA (PostgreSQL native protocol)
+- Port 5432: PostgreSQL endpoint
+- Port 6132: ProxySQL admin interface
+- Read/write splitting enabled
+- Max connections: 60,000 total (30k per instance)
+- Admin user: admin / admin (change after deployment!)
+
+Connection via ProxySQL:
+  psql -h <proxysql-domain> -p 5432 -U postgres -d postgres
+
+ProxySQL Admin:
+  psql -h <proxysql-domain> -p 6132 -U admin -d proxysql
+
+EOF
+    elif [ "$proxy_choice" = "3" ]; then
+        cat >> "$info_file" <<EOF
+PGPOOL-II LAYER
+---------------
+- PostgreSQL-native load balancer
+- Port 5432: pgpool endpoint
+- Connection pooling enabled
+- Read/write splitting enabled
+
+Connection via pgpool:
+  psql -h <pgpool-domain> -p 5432 -U postgres -d postgres
+
+EOF
+    fi
+
+    # Direct connection info
+    cat >> "$info_file" <<EOF
+
+DIRECT NODE CONNECTIONS (Internal)
+-----------------------------------
+Primary (pg-1):
+  Host: pg-1.railway.internal
+  Port: 5432
+  Connection: psql -h pg-1.railway.internal -p 5432 -U postgres
+
+Standby (pg-2, pg-3, pg-4):
+  - pg-2.railway.internal:5432
+  - pg-3.railway.internal:5432
+  - pg-4.railway.internal:5432
+
+
+PUBLIC ENDPOINTS (after domain setup)
+--------------------------------------
+To expose services publicly, run:
+
+EOF
+
+    if [ "$proxy_choice" = "2" ]; then
+        cat >> "$info_file" <<EOF
+  # Expose ProxySQL instance 1
+  railway service proxysql
+  railway domain
+
+  # Expose ProxySQL instance 2
+  railway service proxysql-2
+  railway domain
+
+Then connect using:
+  psql -h <proxysql-domain> -p 5432 -U postgres -W
+
+EOF
+    elif [ "$proxy_choice" = "3" ]; then
+        cat >> "$info_file" <<EOF
+  # Expose pgpool
+  railway service pgpool
+  railway domain
+
+Then connect using:
+  psql -h <pgpool-domain> -p 5432 -U postgres -W
+
+EOF
+    else
+        cat >> "$info_file" <<EOF
+  # Expose pg-1 (primary)
+  railway service pg-1
+  railway domain
+
+Then connect using:
+  psql -h <pg-1-domain> -p 5432 -U postgres -W
+
+EOF
+    fi
+
+    cat >> "$info_file" <<EOF
+
+SECURITY WARNINGS
+-----------------
+1. Change default ProxySQL admin password (admin/admin)
+2. Passwords are stored in Railway environment variables
+3. Use connection pooling for high-traffic applications
+4. Monitor repmgr cluster status regularly
+
+
+MONITORING & MAINTENANCE
+-------------------------
+Check cluster status:
+  railway ssh --service pg-1
+  gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
+
+View node logs:
+  railway logs --service pg-1
+
+Manual failover (if needed):
+  railway ssh --service pg-2
+  gosu postgres repmgr standby promote -f /etc/repmgr/repmgr.conf
+
+
+REFERENCE DOCUMENTATION
+------------------------
+- PostgreSQL HA setup: README.md
+- Client connection examples: CLIENT_CONNECTION_EXAMPLES.md
+- ProxySQL HA endpoints: PROXYSQL_HA_ENDPOINT.md
+
+================================================================================
+This information has been saved to: $info_file
+================================================================================
+EOF
+
+    # Display to console
+    cat "$info_file"
+    
+    log_success "Cluster initialization summary saved to: $info_file"
+}
+
 # Function to deploy a service
 deploy_service() {
     local service_name=$1
@@ -275,6 +449,11 @@ main() {
     fi
     
     log_success "=== All services deployed! ==="
+    log_info ""
+    
+    # Generate cluster initialization summary
+    log_cluster_info "$proxy_choice"
+    
     log_info ""
     log_info "Next steps:"
     log_info "1. Check deployment status: railway status"

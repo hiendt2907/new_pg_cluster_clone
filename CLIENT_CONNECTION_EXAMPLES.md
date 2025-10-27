@@ -1,5 +1,11 @@
 # Client Connection Examples - ProxySQL HA
 
+> **🔒 SECURITY NOTE**
+> - **All passwords shown as `YOUR_SECURE_PASSWORD` are PLACEHOLDERS only**
+> - **Real passwords are auto-generated (32-character random) and stored in Railway environment variables**
+> - **Replace `YOUR_SECURE_PASSWORD` with actual password from `railway variables --service proxysql`**
+> - **Never commit real passwords to Git**
+
 ## PostgreSQL Multi-Host Connection String (Recommended)
 
 ### Python (psycopg2/psycopg3)

@@ -1082,17 +1082,28 @@ gosu postgres pg_restore -d postgres /tmp/restore.dump
 
 ### Security Hardening
 
-#### 1. Change Default Passwords
+> **🔒 PASSWORD POLICY**
+> - **All example passwords in this documentation use placeholder `YOUR_SECURE_PASSWORD`**
+> - **Real passwords are auto-generated (32-character random) via `railway-setup-shared-vars.sh`**
+> - **All .env files use Railway reference variables (`${{POSTGRES_PASSWORD}}`), so passwords are NEVER committed to Git**
+> - **Never use example passwords in production - they are for syntax demonstration only**
+
+#### 1. Auto-Generated Passwords (Recommended)
 ```bash
-# Generate secure passwords
+# Run Railway setup script to auto-generate secure passwords
+./railway-setup-shared-vars.sh
+
+# This will:
+# 1. Generate random 32-character passwords using OpenSSL
+# 2. Set Railway shared variables automatically
+# 3. Display generated passwords (save them securely!)
+```
+
+#### 2. Manual Password Generation (Alternative)
+```bash
+# Generate secure passwords manually
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
 REPMGR_PASSWORD=$(openssl rand -base64 32)
-
-# Update all .env files
-for dir in pg-1 pg-2 pg-3 pg-4 witness proxysql proxysql-2; do
-    sed -i "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" $dir/.env
-    sed -i "s/REPMGR_PASSWORD=.*/REPMGR_PASSWORD=$REPMGR_PASSWORD/" $dir/.env
-done
 
 # Update Railway shared variables
 railway variables set \
@@ -1100,7 +1111,7 @@ railway variables set \
   REPMGR_PASSWORD=$REPMGR_PASSWORD
 ```
 
-#### 2. Restrict pg_hba.conf
+#### 3. Restrict pg_hba.conf
 ```bash
 # Edit pg-*/entrypoint.sh
 # Replace:
@@ -1188,4 +1199,4 @@ This project is provided as-is for educational and production use.
 
 **Last Updated**: October 27, 2025
 **Version**: 2.0.0
-**Maintained by**: hiendt2907
+**Maintained by**: hiendt1@outlook.com.vn
