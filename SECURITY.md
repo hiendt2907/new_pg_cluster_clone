@@ -142,21 +142,32 @@ nmap -p 5432 <proxysql-domain>
 
 **pg_hba.conf Configuration:**
 ```conf
-# Application users
-host    all   app_readonly    0.0.0.0/0   md5
-host    all   app_readwrite   0.0.0.0/0   md5
+# Application users (SCRAM-SHA-256 encryption)
+host    all   app_readonly    0.0.0.0/0   scram-sha-256
+host    all   app_readwrite   0.0.0.0/0   scram-sha-256
 
-# Admin users
-host    all   postgres        0.0.0.0/0   md5
-host    all   repmgr          0.0.0.0/0   md5
+# Admin users (SCRAM-SHA-256 encryption)
+host    all   postgres        0.0.0.0/0   scram-sha-256
+host    all   repmgr          0.0.0.0/0   scram-sha-256
 
-# Replication
-host    replication   repmgr  0.0.0.0/0   md5
+# Replication (SCRAM-SHA-256 encryption)
+host    replication   repmgr  0.0.0.0/0   scram-sha-256
 ```
+
+**Password Encryption:**
+- ✅ **SCRAM-SHA-256** (default) - Modern, secure password hashing
+- ❌ NOT using md5 (deprecated, weak against rainbow tables)
+- ❌ NOT using SHA-1 (deprecated, cryptographically broken)
+
+**SCRAM-SHA-256 Benefits:**
+- Salted hashing (prevents rainbow table attacks)
+- Iterative hashing (resistant to brute force)
+- Channel binding support (prevents MITM attacks)
+- Industry standard (IETF RFC 7677)
 
 **Notes:**
 - Allows connections from any IP (Railway limitation)
-- Requires valid password authentication (md5)
+- Requires valid SCRAM-SHA-256 encrypted password
 - For SSL/TLS, change `host` → `hostssl` (manual setup required)
 
 ### Audit Logging

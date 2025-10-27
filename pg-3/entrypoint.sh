@@ -138,6 +138,9 @@ log_min_duration_statement = 1000
 log_checkpoints = on
 log_lock_waits = on
 
+# Password Encryption (SCRAM-SHA-256 is more secure than md5)
+password_encryption = 'scram-sha-256'
+
 # SSL/TLS (if certificates exist)
 ssl = off
 # ssl_cert_file = 'server.crt'
@@ -162,25 +165,25 @@ write_pg_hba() {
 # Local connections (trusted for admin tasks)
 local   all             all                                     trust
 
-# Application users (require password, prefer SSL in production)
-host    all             app_readonly    0.0.0.0/0               md5
-host    all             app_readwrite   0.0.0.0/0               md5
-host    all             app_readonly    ::/0                    md5
-host    all             app_readwrite   ::/0                    md5
+# Application users (SCRAM-SHA-256 for strong password encryption)
+host    all             app_readonly    0.0.0.0/0               scram-sha-256
+host    all             app_readwrite   0.0.0.0/0               scram-sha-256
+host    all             app_readonly    ::/0                    scram-sha-256
+host    all             app_readwrite   ::/0                    scram-sha-256
 
-# Admin and repmgr users
-host    all             postgres        0.0.0.0/0               md5
-host    all             postgres        ::/0                    md5
-host    all             ${REPMGR_USER}  0.0.0.0/0               md5
-host    all             ${REPMGR_USER}  ::/0                    md5
+# Admin and repmgr users (SCRAM-SHA-256)
+host    all             postgres        0.0.0.0/0               scram-sha-256
+host    all             postgres        ::/0                    scram-sha-256
+host    all             ${REPMGR_USER}  0.0.0.0/0               scram-sha-256
+host    all             ${REPMGR_USER}  ::/0                    scram-sha-256
 
-# Replication connections
-host    replication     ${REPMGR_USER}  0.0.0.0/0               md5
-host    replication     ${REPMGR_USER}  ::/0                    md5
+# Replication connections (SCRAM-SHA-256)
+host    replication     ${REPMGR_USER}  0.0.0.0/0               scram-sha-256
+host    replication     ${REPMGR_USER}  ::/0                    scram-sha-256
 
-# NOTE: For production, consider changing to 'hostssl' to require SSL/TLS
-# hostssl all             app_readonly    0.0.0.0/0               md5
-# hostssl all             app_readwrite   0.0.0.0/0               md5
+# NOTE: For production with SSL/TLS, change 'host' to 'hostssl'
+# hostssl all             app_readonly    0.0.0.0/0               scram-sha-256
+# hostssl all             app_readwrite   0.0.0.0/0               scram-sha-256
 EOF
 }
 

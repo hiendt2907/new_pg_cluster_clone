@@ -1240,12 +1240,27 @@ railway variables set \
 ```bash
 # Edit pg-*/entrypoint.sh
 # Replace:
-host all all ::/0 md5
+host all all ::/0 scram-sha-256
 # With:
-host all all <your-ip-range> md5
+host all all <your-ip-range> scram-sha-256
+
+# Note: Using SCRAM-SHA-256 (modern, secure)
+# NOT md5 (deprecated, weak) or SHA-1 (broken)
 ```
 
-#### 3. Enable SSL/TLS (Optional)
+#### 4. Password Encryption
+```bash
+# PostgreSQL uses SCRAM-SHA-256 by default (secure)
+# Configured in postgresql.conf:
+password_encryption = 'scram-sha-256'
+
+# Benefits:
+# - Salted hashing (prevents rainbow tables)
+# - Iterative hashing (resistant to brute force)
+# - Industry standard (IETF RFC 7677)
+```
+
+#### 5. Enable SSL/TLS (Optional)
 ```bash
 # Generate certificates
 openssl req -new -x509 -days 365 -nodes -text -out server.crt -keyout server.key -subj "/CN=pg-cluster"
