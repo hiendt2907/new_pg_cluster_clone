@@ -1,26 +1,52 @@
-# Horizontal Scaling Guide - PostgreSQL HA Cluster
+# PostgreSQL HA Cluster - Scaling Guide
 
-Hướng dẫn chi tiết để scale cluster lên hoặc xuống bằng cách thêm/xóa PostgreSQL nodes.
+## Overview
 
----
+This guide explains how to **scale your PostgreSQL HA cluster** horizontally by adding or removing PostgreSQL nodes on Railway platform.
 
-## 📊 Overview
-
-**Current Architecture:**
-- Core Cluster: `pg-1`, `pg-2`, `pg-3`, `pg-4` (protected, cannot remove)
-- Witness: `witness` (quorum voting only)
-- ProxySQL HA: `proxysql`, `proxysql-2` (connection pooling + query routing)
-
-**Scalable Nodes:**
-- Can add: `pg-5`, `pg-6`, `pg-7`, ... `pg-N`
-- Can remove: Only nodes with ID >= 5
-- Protection: Core nodes (pg-1 to pg-4) cannot be removed
+**Key Features:**
+- ✅ Zero-downtime node addition via automated script
+- ✅ Automatic ProxySQL discovery (no restart required)
+- ✅ Repmgr automatic cluster registration
+- ✅ Preserves high availability during scaling
 
 ---
 
-## ⬆️ Scale Up - Adding Nodes
+## Architecture Recap
 
-### Method 1: Automated Script (Recommended)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ProxySQL HA Layer                        │
+│  ┌──────────────┐              ┌──────────────┐            │
+│  │  ProxySQL-1  │              │  ProxySQL-2  │            │
+│  │ (30k conns)  │◄────────────►│ (30k conns)  │            │
+│  └──────┬───────┘              └──────┬───────┘            │
+└─────────┼──────────────────────────────┼──────────────────┘
+          │                              │
+          └──────────────┬───────────────┘
+                         │
+          ┌──────────────┴───────────────┐
+          │   PostgreSQL Cluster         │
+          │   ┌────┐ ┌────┐ ┌────┐      │
+          │   │pg-1│ │pg-2│ │pg-3│ ...  │ ← Can scale horizontally
+          │   └────┘ └────┘ └────┘      │
+          │   + witness node             │
+          └──────────────────────────────┘
+```
+
+**When to scale:**
+- CPU/Memory utilization > 70% on existing nodes
+- Need more read replicas for query distribution
+- Geographical distribution requirements
+- Disaster recovery preparation
+
+---
+
+## Adding a New Node
+
+### Automated Method (Recommended)
+
+Use the provided script to add nodes automatically:
 
 ```bash
 # Add pg-5
@@ -29,80 +55,56 @@ Hướng dẫn chi tiết để scale cluster lên hoặc xuống bằng cách t
 # Add pg-6
 ./railway-add-node.sh 6
 
-# Add pg-7
-./railway-add-node.sh 7
+# Add pg-N
+./railway-add-node.sh N
 ```
 
-#### What the script does:
-1. ✅ Validates node number (must be >= 5)
-2. ✅ Copies folder structure from `pg-4` template
-3. ✅ Generates `.env` file with:
-   - `NODE_NAME=pg-5`
-   - `NODE_ID=5`
-   - `PEERS=pg-1,pg-2,pg-3`
-   - Railway password references: `${{POSTGRES_PASSWORD}}`, `${{REPMGR_PASSWORD}}`
-4. ✅ Creates Railway service
-5. ✅ Sets environment variables from `.env`
-6. ✅ Adds persistent volume at `/var/lib/postgresql`
-7. ✅ Deploys new node
-8. ✅ Updates both ProxySQL instances (`proxysql` and `proxysql-2`)
-9. ✅ Redeploys ProxySQL to discover new node
+**What the script does:**
+1. ✅ Creates `pg-N/` folder by copying from `pg-4/`
+2. ✅ Configures `.env` with correct NODE_NAME and NODE_ID
+3. ✅ Creates Railway service `pg-N`
+4. ✅ Sets environment variables from `.env`
+5. ✅ Adds volume for PostgreSQL data
+6. ✅ Deploys service to Railway
+7. ✅ **Updates ProxySQL without restart** (LOAD TO RUNTIME, SAVE TO DISK)
 
-#### Script Output Example:
-```
-[INFO] === Adding PostgreSQL Node: pg-5 ===
-[INFO] Step 1: Creating node directory from pg-4 template...
-[SUCCESS] Directory created: /root/new_pg_cluster_clone/pg-5
-[INFO] Step 2: Updating .env configuration...
-[SUCCESS] .env file configured for pg-5 (ID: 5)
-[INFO] Step 3: Creating Railway service 'pg-5'...
-[SUCCESS] Service 'pg-5' created on Railway
-[INFO] Step 4: Linking to service 'pg-5'...
-[SUCCESS] Linked to service pg-5
-[INFO] Step 5: Setting environment variables...
-[SUCCESS] Environment variables set
-[INFO] Step 6: Adding persistent volume at /var/lib/postgresql...
-[SUCCESS] Volume added to pg-5
-[INFO] Step 7: Deploying pg-5 to Railway...
-[SUCCESS] Deployment started for pg-5
-[INFO] Step 8: Updating ProxySQL configuration...
-[SUCCESS] Updated proxysql/entrypoint.sh
-[INFO] Redeploying proxysql...
-[SUCCESS] Updated proxysql-2/entrypoint.sh
-[INFO] Redeploying proxysql-2...
-[SUCCESS] 
-=== Node pg-5 added successfully! ===
-
-Next steps:
-1. Wait 30-60 seconds for pg-5 to initialize
-2. Check deployment: railway logs --service pg-5
-3. Verify cluster status:
-   railway ssh --service pg-1
-   gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
-```
+**Timeline:**
+- Node creation: ~10 seconds
+- Deployment: ~30-60 seconds
+- ProxySQL update: Immediate (no restart)
+- Total: **~1-2 minutes**
 
 ---
 
-### Method 2: Manual Process
+### Manual Method
 
-If you prefer manual control or the script fails:
+If you prefer manual control:
 
-#### Step 1: Copy Template
+#### Step 1: Create Node Directory
+
 ```bash
+# Copy pg-4 as template
 cp -r pg-4 pg-5
 cd pg-5
 ```
 
 #### Step 2: Update Configuration
+
+Edit `pg-5/.env`:
+
 ```bash
-cat > .env << 'EOF'
+# Node identification (REQUIRED)
 NODE_NAME=pg-5
 NODE_ID=5
-PEERS=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal
 
-# Passwords from Railway shared variables
+# Peer nodes for discovery (at least 2 recommended)
+PEERS=pg-1.railway.internal,pg-2.railway.internal
+
+# Passwords (Railway references)
 POSTGRES_PASSWORD=${{POSTGRES_PASSWORD}}
 REPMGR_PASSWORD=${{REPMGR_PASSWORD}}
+
+# Primary hint (bootstrap node)
 PRIMARY_HINT=${{PRIMARY_HINT}}
 
 # PostgreSQL settings
@@ -110,343 +112,365 @@ POSTGRES_USER=postgres
 REPMGR_USER=repmgr
 REPMGR_DB=repmgr
 PG_PORT=5432
-EOF
 ```
 
 #### Step 3: Create Railway Service
+
 ```bash
-# Add service
+# Add service to Railway project
 railway add --service pg-5
 
 # Link to service
 railway service pg-5
 
 # Set environment variables
-railway variables --set "NODE_NAME=pg-5" --skip-deploys
-railway variables --set "NODE_ID=5" --skip-deploys
-railway variables --set "PEERS=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal" --skip-deploys
-
-# Add volume
-echo "/var/lib/postgresql" | railway volume add
+cat .env | while IFS='=' read -r key value; do
+  [[ -z "$key" || "$key" =~ ^# ]] && continue
+  railway variables --set "$key=$value" --skip-deploys
+done
 ```
 
-#### Step 4: Deploy Node
+#### Step 4: Add Volume
+
+```bash
+# Add persistent volume for PostgreSQL data
+railway volume add
+# Enter mount path: /var/lib/postgresql
+```
+
+#### Step 5: Deploy
+
 ```bash
 railway up --detach
 ```
 
-#### Step 5: Update ProxySQL Configuration
+#### Step 6: Update ProxySQL (No Restart!)
 
-Edit `proxysql/entrypoint.sh`:
+Wait for new node to be ready, then add to ProxySQL:
+
 ```bash
-# Find line:
-: "${PG_NODES:=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal,pg-4.railway.internal}"
+# Wait for pg-5 to initialize
+sleep 30
 
-# Change to:
-: "${PG_NODES:=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal,pg-4.railway.internal,pg-5.railway.internal}"
-```
-
-Edit `proxysql-2/entrypoint.sh` (same change).
-
-#### Step 6: Redeploy ProxySQL
-```bash
-cd ../proxysql
+# Add to ProxySQL instance 1
 railway service proxysql
-railway up --detach
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"INSERT INTO pgsql_servers(hostgroup_id,hostname,port,weight,max_connections) VALUES (2,'pg-5.railway.internal',5432,1000,100); LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\""
 
-cd ../proxysql-2
+# Add to ProxySQL instance 2
 railway service proxysql-2
-railway up --detach
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"INSERT INTO pgsql_servers(hostgroup_id,hostname,port,weight,max_connections) VALUES (2,'pg-5.railway.internal',5432,1000,100); LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\""
 ```
+
+**ProxySQL Commands Explained:**
+- `INSERT INTO pgsql_servers`: Add new node to server list
+- `LOAD PGSQL SERVERS TO RUNTIME`: Apply changes immediately (no restart needed!)
+- `SAVE PGSQL SERVERS TO DISK`: Persist changes across ProxySQL restarts
 
 ---
 
-### Verification After Adding Node
+## Verification
 
-#### 1. Check Node Logs
+### 1. Check Node Deployment
+
 ```bash
-railway logs --service pg-5 --tail 50
+# View deployment logs
+railway logs --service pg-5
 
-# Expected output:
-# [entrypoint] Node configuration: NAME=pg-5, ID=5
-# [entrypoint] Cloning standby from pg-1.railway.internal:5432
-# [entrypoint] Standby registered.
-# [entrypoint] Starting repmgrd...
+# Should see:
+# [INFO] Node configuration: NAME=pg-5, ID=5
+# [INFO] Cloning standby from pg-1.railway.internal:5432
+# [INFO] Standby registered.
 ```
 
-#### 2. Verify Cluster Status
+### 2. Verify Cluster Status
+
 ```bash
+# SSH into primary node
 railway ssh --service pg-1
 
-# Inside pg-1 container:
+# Check repmgr cluster
 gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
-
-# Expected output:
-#  ID | Name | Role    | Status    | Upstream | Location | Priority | Timeline | Connection string
-# ----+------+---------+-----------+----------+----------+----------+----------+-------------------
-#  1  | pg-1 | primary | * running |          | default  | 199      | 1        | host=pg-1 ...
-#  2  | pg-2 | standby |   running | pg-1     | default  | 198      | 1        | host=pg-2 ...
-#  3  | pg-3 | standby |   running | pg-1     | default  | 197      | 1        | host=pg-3 ...
-#  4  | pg-4 | standby |   running | pg-1     | default  | 196      | 1        | host=pg-4 ...
-#  5  | pg-5 | standby |   running | pg-1     | default  | 195      | 1        | host=pg-5 ...  ← NEW
-# 99  | witness | witness | * running | pg-1  | default  | 0        |          | host=witness ...
 ```
 
-#### 3. Check ProxySQL Discovery
-```bash
-railway logs --service proxysql | grep pg-5
-
-# Expected output:
-# [proxysql] Checking pg-5.railway.internal:5432
-# [proxysql]   → pg-5.railway.internal:5432 is STANDBY (hostgroup 2)
+**Expected output:**
+```
+ ID | Name   | Role    | Status    | Upstream | Location | Priority
+----+--------+---------+-----------+----------+----------+----------
+ 1  | pg-1   | primary | * running |          | default  | 199
+ 2  | pg-2   | standby |   running | pg-1     | default  | 198
+ 3  | pg-3   | standby |   running | pg-1     | default  | 197
+ 4  | pg-4   | standby |   running | pg-1     | default  | 196
+ 5  | pg-5   | standby |   running | pg-1     | default  | 195  ← New node
 ```
 
-#### 4. Test Connection via ProxySQL
+### 3. Verify ProxySQL Discovery
+
 ```bash
-# Get ProxySQL domain
+# Check ProxySQL servers list
 railway service proxysql
-railway domain
-
-# Connect (replace with your domain)
-psql -h proxysql-production-abc123.up.railway.app -p 5432 -U postgres -d postgres
-
-# Check connection distribution
-SELECT * FROM pg_stat_replication;
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c 'SELECT hostgroup_id, hostname, port, status FROM pgsql_servers ORDER BY hostgroup_id, hostname;'"
 ```
+
+**Expected output:**
+```
+ hostgroup_id |          hostname          | port | status
+--------------+----------------------------+------+--------
+            1 | pg-1.railway.internal      | 5432 | ONLINE
+            2 | pg-2.railway.internal      | 5432 | ONLINE
+            2 | pg-3.railway.internal      | 5432 | ONLINE
+            2 | pg-4.railway.internal      | 5432 | ONLINE
+            2 | pg-5.railway.internal      | 5432 | ONLINE  ← New node
+```
+
+- **hostgroup_id=1**: Writer group (primary only)
+- **hostgroup_id=2**: Reader group (standby nodes)
+- **status=ONLINE**: Node is healthy and accepting connections
 
 ---
 
-## ⬇️ Scale Down - Removing Nodes
+## Removing a Node
 
-### Method 1: Automated Script (Recommended)
+**Important:** Node removal must be done via **Railway Dashboard**, not CLI.
+
+### Step 1: Unregister from Repmgr
 
 ```bash
-# Remove pg-5
-./railway-remove-node.sh 5
+# SSH into the node to remove (e.g., pg-5)
+railway ssh --service pg-5
 
-# Confirmation prompt will appear:
-# Type 'yes' to continue
+# Unregister from cluster
+gosu postgres repmgr -f /etc/repmgr/repmgr.conf standby unregister
+
+# Exit SSH
+exit
 ```
 
-#### What the script does:
-1. ✅ Validates node number (must be >= 5, cannot remove core nodes)
-2. ✅ Prompts for confirmation
-3. ✅ Unregisters node from repmgr cluster via pg-1
-4. ✅ Deletes Railway service (including volume data - **WARNING: DATA LOSS**)
-5. ✅ Removes node from both ProxySQL configurations
-6. ✅ Redeploys ProxySQL instances
-7. ✅ Deletes local directory
+### Step 2: Remove from ProxySQL
 
-#### Script Output Example:
-```
-[WARN] === Removing PostgreSQL Node: pg-5 ===
-[WARN] This will:
-[WARN]   1. Unregister node from repmgr cluster
-[WARN]   2. Delete Railway service (volume data will be deleted!)
-[WARN]   3. Remove from ProxySQL configuration
-[WARN]   4. Delete local directory
-
-Are you sure? Type 'yes' to continue: yes
-
-[INFO] === Removing pg-5 ===
-[INFO] Step 1: Unregistering from repmgr cluster...
-[SUCCESS]   Node unregistered from repmgr
-[INFO] Step 2: Deleting Railway service 'pg-5'...
-[SUCCESS]   Railway service deleted
-[INFO] Step 3: Removing from ProxySQL configuration...
-[SUCCESS]   Removed from proxysql configuration
-[SUCCESS]   Removed from proxysql-2 configuration
-[INFO] Step 4: Deleting local directory...
-[SUCCESS]   Directory deleted: /root/new_pg_cluster_clone/pg-5
-
-=== Node pg-5 removed successfully! ===
-```
-
----
-
-### Method 2: Manual Process
-
-#### Step 1: Unregister from repmgr
 ```bash
-# SSH into primary (pg-1)
-railway ssh --service pg-1
-
-# Unregister node
-gosu postgres repmgr -f /etc/repmgr/repmgr.conf primary unregister --node-id=5 --force
-```
-
-#### Step 2: Delete Railway Service
-```bash
-# Delete service (WARNING: This deletes volume data!)
-railway service pg-5
-railway service delete --yes pg-5
-```
-
-#### Step 3: Remove from ProxySQL
-
-Edit `proxysql/entrypoint.sh`:
-```bash
-# Find line:
-: "${PG_NODES:=pg-1.railway.internal,...,pg-5.railway.internal}"
-
-# Remove pg-5:
-: "${PG_NODES:=pg-1.railway.internal,...,pg-4.railway.internal}"
-```
-
-Edit `proxysql-2/entrypoint.sh` (same change).
-
-#### Step 4: Redeploy ProxySQL
-```bash
-cd proxysql
+# Remove from ProxySQL instance 1
 railway service proxysql
-railway up --detach
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"DELETE FROM pgsql_servers WHERE hostname='pg-5.railway.internal'; LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\""
 
-cd ../proxysql-2
+# Remove from ProxySQL instance 2
 railway service proxysql-2
-railway up --detach
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"DELETE FROM pgsql_servers WHERE hostname='pg-5.railway.internal'; LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\""
 ```
 
-#### Step 5: Delete Local Directory
+### Step 3: Delete Service via Railway Dashboard
+
+1. Open Railway Dashboard: `railway open`
+2. Navigate to project
+3. Find service `pg-5`
+4. Click **Settings** → **Danger Zone** → **Delete Service**
+5. Confirm deletion
+
+### Step 4: Clean Up Local Files (Optional)
+
 ```bash
-cd ..
-rm -rf pg-5
+# Remove local folder
+rm -rf pg-5/
 ```
+
+**Why Railway Dashboard for deletion?**
+- Railway CLI doesn't support service deletion
+- Dashboard deletion ensures:
+  - Proper volume cleanup
+  - Environment variable cleanup
+  - Deployment history preservation
+  - Billing adjustments
 
 ---
 
-### Verification After Removing Node
+## Scaling Scenarios
 
-#### 1. Verify Cluster Status
+### Scenario 1: High Read Load
+
+**Problem:** Read queries overwhelming current standbys
+
+**Solution:** Add 2-3 read replicas
+
 ```bash
-railway ssh --service pg-1
-gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
-
-# pg-5 should NOT appear in output
-```
-
-#### 2. Check ProxySQL
-```bash
-railway logs --service proxysql | grep -i pg-5
-
-# Should show no recent mentions of pg-5
-```
-
-#### 3. Verify Railway Services
-```bash
-railway status
-
-# pg-5 should NOT be listed
-```
-
----
-
-## 🔧 Common Scaling Scenarios
-
-### Scenario 1: Add 2 Nodes for Read Scaling
-```bash
-# Trading system needs more read capacity
 ./railway-add-node.sh 5
-sleep 60  # Wait for pg-5 to stabilize
 ./railway-add-node.sh 6
+./railway-add-node.sh 7
 ```
 
 **Result:**
-- 6 data nodes total (pg-1 to pg-6)
-- Read queries distributed across 5 standbys (pg-2, pg-3, pg-4, pg-5, pg-6)
-- 60k connections via ProxySQL HA pair
+- ProxySQL distributes reads across 6 standbys (pg-2 through pg-7)
+- Primary (pg-1) handles writes only
+- Read throughput increases 2-3x
 
-### Scenario 2: Temporary Node for Testing
+### Scenario 2: Geographical Distribution
+
+**Problem:** Need nodes in multiple regions
+
+**Solution:** Deploy nodes to different Railway regions
+
+1. Add node in current region: `./railway-add-node.sh 5`
+2. In Railway Dashboard:
+   - Change `pg-5` region to target location
+   - Redeploy service
+3. Update `PEERS` in `pg-5/.env` to include cross-region nodes
+
+### Scenario 3: Disaster Recovery
+
+**Problem:** Need cold standby for disaster recovery
+
+**Solution:** Add DR node with paused deployment
+
 ```bash
-# Add test node
-./railway-add-node.sh 99
+# Add pg-6 as DR node
+./railway-add-node.sh 6
 
-# Run tests...
-railway ssh --service pg-99
-# ...test queries...
-
-# Remove when done
-./railway-remove-node.sh 99
-```
-
-### Scenario 3: Replace Failed Node
-```bash
-# Old pg-5 has hardware issues, remove it
-./railway-remove-node.sh 5
-
-# Add fresh pg-5
-./railway-add-node.sh 5
+# In Railway Dashboard, pause pg-6 service
+# Resume only during DR scenarios
 ```
 
 ---
 
-## ⚠️ Important Considerations
+## Best Practices
 
-### Node ID Limits
-- **Core nodes**: 1-4 (protected, cannot remove)
-- **Witness**: 99 (protected, quorum voting)
-- **Scalable nodes**: 5-98 (can add/remove freely)
+### Node Naming
 
-### Railway Resource Limits
-- **Pro Plan**: Up to 20 services per project
-- **Starter Plan**: Up to 5 services (not enough for this cluster)
-- Check your plan: `railway plan`
+- ✅ **Use sequential naming**: pg-5, pg-6, pg-7 (not pg-backup, pg-test)
+- ✅ **Match NODE_ID to number**: pg-5 → NODE_ID=5
+- ❌ **Avoid gaps**: Don't skip numbers (pg-4 → pg-6)
 
-### Performance Impact
-- **Adding nodes**: No downtime, ProxySQL discovers automatically
-- **Removing nodes**: Brief connection interruption during ProxySQL redeploy
-- **Repmgr registration**: Takes 10-30 seconds per node
+### PEERS Configuration
 
-### Cost Estimation
-Each additional PostgreSQL node adds:
-- Compute: ~$10-20/month (Railway Pro pricing)
-- Storage: $0.25/GB/month for persistent volume
-- Network: Included in Railway pricing
+- ✅ **Include at least 2 peers**: `PEERS=pg-1.railway.internal,pg-2.railway.internal`
+- ✅ **Mix primary and standbys**: Ensure new nodes can discover cluster
+- ❌ **Don't include self**: pg-5 should not include pg-5 in PEERS
 
-### Data Replication
-- New nodes clone from primary (pg-1) by default
-- Cloning time depends on database size:
-  - 1GB: ~10 seconds
-  - 10GB: ~1 minute
-  - 100GB: ~10 minutes
-  - 1TB: ~2 hours
+### ProxySQL Updates
+
+- ✅ **Use LOAD TO RUNTIME**: Applies changes immediately (no restart!)
+- ✅ **Use SAVE TO DISK**: Persists changes across restarts
+- ✅ **Add to both instances**: proxysql AND proxysql-2
+- ❌ **Don't restart ProxySQL**: LOAD TO RUNTIME is sufficient
+
+### Volume Management
+
+- ✅ **Always add volume before first deployment**
+- ✅ **Use `/var/lib/postgresql` mount path**
+- ❌ **Never delete volume with data**: Causes data loss
 
 ---
 
-## 🛡️ Safety Features
+## Troubleshooting
 
-### Core Node Protection
+### Issue: Node stuck in "cloning" state
+
 ```bash
-# Attempting to remove pg-1
-./railway-remove-node.sh 1
+# Check logs
+railway logs --service pg-5 | tail -50
 
-# Output:
-# [ERROR] Cannot remove core nodes (pg-1 to pg-4)
-# [ERROR] These are essential for cluster quorum and availability
+# Common causes:
+# 1. Primary not reachable
+# 2. Incorrect PEERS configuration
+# 3. Password mismatch
+
+# Fix: Verify PEERS and passwords
+railway service pg-5
+railway variables | grep -E "POSTGRES_PASSWORD|REPMGR_PASSWORD|PEERS"
 ```
 
-### Confirmation Prompts
-All removal operations require explicit confirmation:
+### Issue: ProxySQL not detecting new node
+
 ```bash
-Are you sure? Type 'yes' to continue:
+# Manually add to ProxySQL
+railway service proxysql
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"INSERT INTO pgsql_servers(hostgroup_id,hostname,port,weight,max_connections) VALUES (2,'pg-5.railway.internal',5432,1000,100); LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\""
+
+# Verify
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c 'SELECT * FROM pgsql_servers;'"
 ```
 
-### Automatic Cleanup
-Scripts handle all cleanup automatically:
-- Unregister from repmgr cluster
-- Delete Railway service + volumes
-- Remove from ProxySQL config
-- Delete local directories
+### Issue: Repmgr registration failed
+
+```bash
+# SSH into new node
+railway ssh --service pg-5
+
+# Manually register
+gosu postgres repmgr -h pg-1.railway.internal -U repmgr -d repmgr -f /etc/repmgr/repmgr.conf standby register --force
+
+# Check cluster
+gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
+```
 
 ---
 
-## 📚 References
+## Performance Considerations
 
-- Main README: [README.md](README.md)
-- Scripts Documentation: [README.md#scripts-documentation](README.md#-scripts-documentation)
-- Security Audit: [SECURITY_AUDIT.md](SECURITY_AUDIT.md)
-- Client Connection Examples: [CLIENT_CONNECTION_EXAMPLES.md](CLIENT_CONNECTION_EXAMPLES.md)
+### Node Count vs Performance
+
+| Nodes | Read Capacity | Write Capacity | Failover Time | Recommended For |
+|-------|---------------|----------------|---------------|-----------------|
+| 4     | 3x            | 1x             | 10-30s        | Small apps      |
+| 6     | 5x            | 1x             | 10-30s        | Medium apps     |
+| 8     | 7x            | 1x             | 10-30s        | Large apps      |
+| 10+   | 9x+           | 1x             | 10-30s        | Enterprise      |
+
+**Key Points:**
+- Write capacity = 1x (always limited by primary)
+- Read capacity = (N-1)x where N = total nodes
+- Failover time independent of node count
+- More nodes = more replication overhead on primary
+
+### ProxySQL Connection Limits
+
+- Each ProxySQL instance: 30,000 connections
+- Total capacity: 60,000 connections (2 instances)
+- Per-backend limit: 100 connections (configurable)
+
+**Formula:**
+```
+Max concurrent queries = ProxySQL instances × max_connections
+                       = 2 × 30,000 = 60,000
+```
 
 ---
 
-**Last Updated**: October 27, 2025  
-**Scripts Version**: 2.0.0
+## Monitoring
+
+### Key Metrics to Watch
+
+```bash
+# Replication lag
+railway ssh --service pg-5
+gosu postgres psql -c "SELECT NOW() - pg_last_xact_replay_timestamp() AS replication_lag;"
+
+# Connection count
+railway service proxysql
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c 'SELECT * FROM stats_pgsql_connection_pool;'"
+
+# Node health
+gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
+```
+
+---
+
+## Summary
+
+**Adding a node:**
+1. Run `./railway-add-node.sh N`
+2. Wait 1-2 minutes for deployment
+3. Verify with `repmgr cluster show` and ProxySQL query
+4. ProxySQL automatically includes new node (no restart!)
+
+**Removing a node:**
+1. Unregister from repmgr: `gosu postgres repmgr standby unregister`
+2. Remove from ProxySQL: `DELETE FROM pgsql_servers; LOAD TO RUNTIME; SAVE TO DISK`
+3. Delete service via Railway Dashboard
+4. Clean up local files: `rm -rf pg-N/`
+
+**Best practices:**
+- ✅ Use automated script for consistency
+- ✅ Always update ProxySQL without restart (LOAD TO RUNTIME)
+- ✅ Monitor replication lag after scaling
+- ✅ Test failover after major topology changes
+
+For detailed deployment guide, see `README.md`.  
+For security audit, see `SECURITY_AUDIT.md`.

@@ -1,12 +1,12 @@
 # PostgreSQL High Availability Cluster on Railway
-## with ProxySQL 3.0 BETA - Trading Optimized
+## with ProxySQL 3.0 BETA - High Performance
 
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?logo=postgresql)](https://www.postgresql.org/)
 [![repmgr](https://img.shields.io/badge/repmgr-5.5.0-green)](https://repmgr.org/)
 [![ProxySQL](https://img.shields.io/badge/ProxySQL-3.0.2%20BETA-orange)](https://proxysql.com/)
 [![Railway](https://img.shields.io/badge/Railway-Platform-purple)](https://railway.app/)
 
-**High-performance PostgreSQL cluster** với automatic failover, connection pooling, và query routing - được tối ưu cho hệ thống trading với 60,000 concurrent connections.
+**High-performance PostgreSQL cluster** với automatic failover, connection pooling, và query routing - optimized for high-concurrency with 60,000 concurrent connections.
 
 ---
 
@@ -35,11 +35,11 @@ Dự án này cung cấp **PostgreSQL High Availability Cluster** được thi�
 - ✅ **Scalability**: 4 PostgreSQL nodes + witness = 5-node cluster
 - ✅ **Connection Pooling**: 60,000 concurrent connections qua ProxySQL HA pair
 - ✅ **Query Routing**: Tự động route write queries → primary, read queries → standbys
-- ✅ **Trading Optimized**: 32 threads, 20s poll timeout, connection multiplexing
+- ✅ **High Performance**: 32 threads, 20s poll timeout, connection multiplexing
 - ✅ **Railway Platform**: Fixes cho IPv6, dynamic hostnames, và container networking
 
 ### Use Cases
-- 🚀 **Trading Systems**: High-frequency trading với yêu cầu low-latency và high-throughput
+- 🚀 **Trading Systems**: High-frequency trading requiring low-latency and high-throughput
 - 💼 **Production Databases**: Business-critical applications cần 99.9% uptime
 - 📊 **Read-Heavy Workloads**: Distribute read queries across 3 standby nodes
 - 🔄 **Disaster Recovery**: Automatic failover trong 10-30 giây
@@ -214,12 +214,9 @@ new_pg_cluster_clone/
 ├── CLIENT_CONNECTION_EXAMPLES.md      # 💻 Client connection code examples
 │
 ├── railway-deploy.sh                  # 🤖 Interactive deployment script
-├── railway-auto-deploy.sh             # 🤖 Automated deployment (CLI)
-├── railway-api-deploy.sh              # 🤖 API-based deployment (GraphQL)
+├── railway-auto-deploy.sh             # 🤖 Automated deployment (non-interactive)
 ├── railway-setup-shared-vars.sh       # ⚙️ Set shared environment variables
-├── railway-cleanup.sh                 # 🗑️ Delete services
-├── railway-list-services.sh           # 📋 List all services
-├── railway-create-config-service.sh   # 🔧 (Unused) Config service
+├── railway-add-node.sh                # ➕ Add new PostgreSQL node (scaling)
 │
 ├── docker-compose.yml                 # 🐳 Local testing
 ├── railway.toml                       # ⚙️ Railway config
@@ -346,17 +343,9 @@ railway link  # Select "pg-cluster" from list
 #### Option 2: Automated Deployment
 ```bash
 ./railway-auto-deploy.sh
-# Choose option 1: Delete old + deploy new
 ```
-- No manual interaction
-- Full cleanup + fresh deployment
-
-#### Option 3: API-based Deployment (Advanced)
-```bash
-./railway-api-deploy.sh
-```
-- Uses Railway GraphQL API
-- More control over deployment process
+- Non-interactive deployment
+- Automated cleanup and redeployment
 
 ### Deployment Sequence
 
@@ -480,7 +469,7 @@ PG_NODES=pg-1.railway.internal,pg-2.railway.internal,pg-3.railway.internal,pg-4.
 MONITOR_INTERVAL=5
 ```
 
-### ProxySQL Configuration (Trading Optimized)
+### ProxySQL Configuration (High Performance)
 
 From `proxysql/entrypoint.sh`:
 
@@ -1000,56 +989,11 @@ fi
 ```
 
 **Features**:
-- No manual interaction
-- Full cleanup option
+- Non-interactive deployment
+- Automated cleanup and redeployment
 - Same deployment sequence as railway-deploy.sh
 
-### 3. railway-api-deploy.sh (9.7KB)
-
-**Purpose**: Deploy using Railway GraphQL API
-
-**Usage**:
-```bash
-./railway-api-deploy.sh
-```
-
-**Features**:
-- Uses Railway GraphQL API directly
-- More control over deployment
-- Can be integrated into CI/CD
-
-**Key Functions**:
-
-#### `create_service_api()`
-```bash
-create_service_api() {
-    local service_name=$1
-    local service_dir=$2
-    
-    # GraphQL mutation to create service
-    mutation=$(cat <<EOF
-mutation {
-  serviceCreate(input: {
-    name: "$service_name",
-    projectId: "$PROJECT_ID",
-    source: {
-      repo: "hiendt2907/new_pg_cluster_clone",
-      rootDirectory: "$service_dir"
-    }
-  }) { id name }
-}
-EOF
-)
-    
-    # Call Railway API
-    curl -s "$RAILWAY_API" \
-      -H "Authorization: Bearer $RAILWAY_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d "{\"query\":\"$mutation\"}"
-}
-```
-
-### 4. railway-setup-shared-vars.sh (797B)
+### 3. railway-setup-shared-vars.sh
 
 **Purpose**: Set Railway environment-level shared variables
 
@@ -1058,59 +1002,41 @@ EOF
 ./railway-setup-shared-vars.sh
 ```
 
-**Sets**:
-- `POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD`
-- `REPMGR_PASSWORD=YOUR_SECURE_PASSWORD`
+**Auto-generates** (if not provided):
+- `POSTGRES_PASSWORD` (32-char secure password via OpenSSL)
+- `REPMGR_PASSWORD` (32-char secure password via OpenSSL)
 - `PRIMARY_HINT=pg-1`
 
-**Command**:
+**Manual override**:
 ```bash
-railway variables set \
-  POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD \
-  REPMGR_PASSWORD=YOUR_SECURE_PASSWORD \
-  PRIMARY_HINT=pg-1
+POSTGRES_PASSWORD=YourPassword REPMGR_PASSWORD=YourPassword ./railway-setup-shared-vars.sh
 ```
 
-### 5. railway-cleanup.sh (3.5KB)
+### 4. railway-add-node.sh
 
-**Purpose**: Delete Railway services
+**Purpose**: Add new PostgreSQL node to cluster (horizontal scaling)
 
 **Usage**:
 ```bash
-./railway-cleanup.sh
+# Add pg-5
+./railway-add-node.sh 5
+
+# Add pg-6
+./railway-add-node.sh 6
 ```
 
-**Features**:
-- Lists all services first
-- Prompts for which services to delete
-- Deletes one by one (Railway CLI limitation)
+**What it does**:
+1. Creates `pg-N/` folder from `pg-4/` template
+2. Configures `.env` with NODE_NAME and NODE_ID
+3. Creates Railway service
+4. Sets environment variables
+5. Adds volume for PostgreSQL data
+6. Deploys to Railway
+7. **Updates ProxySQL without restart** (LOAD TO RUNTIME, SAVE TO DISK)
 
-### 6. railway-list-services.sh (1.8KB)
+**Timeline**: ~1-2 minutes total
 
-**Purpose**: List all services and their volumes
-
-**Usage**:
-```bash
-./railway-list-services.sh
-```
-
-**Output**:
-```
-Services in project pg-cluster:
-- pg-1
-- pg-2
-- pg-3
-- pg-4
-- witness
-- proxysql
-- proxysql-2
-
-Volumes:
-- pg-1-data (10GB)
-- pg-2-data (10GB)
-- pg-3-data (10GB)
-- pg-4-data (10GB)
-```
+See `SCALING_GUIDE.md` for details.
 
 ---
 
@@ -1118,7 +1044,7 @@ Volumes:
 
 ### Scaling: Thêm PostgreSQL Node mới
 
-#### Tự động với script (Recommended)
+#### Automated with Script (Recommended)
 
 ```bash
 # Thêm node thứ 5 (pg-5)
@@ -1359,7 +1285,7 @@ This project is provided as-is for educational and production use.
 ## 📊 Status
 
 - ✅ **Production Ready**: Tested on Railway Pro Plan
-- ✅ **Trading Optimized**: 60k connections, low latency
+- ✅ **High Performance**: 60k connections, low latency
 - ⚠️ **ProxySQL BETA**: PostgreSQL support is still in BETA (v3.0.2)
 
 ---

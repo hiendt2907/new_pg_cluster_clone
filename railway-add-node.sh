@@ -148,38 +148,30 @@ railway up --detach || {
 }
 log_success "Deployment started for $NODE_NAME"
 
-# Step 8: Update ProxySQL nodes list
+# Step 8: Update ProxySQL to include new node (no restart needed)
 cd "$PROJECT_DIR"
 log_info ""
-log_info "Step 8: Updating ProxySQL configuration..."
+log_info "Step 8: Adding $NODE_NAME to ProxySQL instances (no restart required)..."
+log_info "Waiting 30 seconds for $NODE_NAME to be ready..."
+sleep 30
 
-# Update both ProxySQL instances
-for proxy in "proxysql" "proxysql-2"; do
-    if [ -d "$PROJECT_DIR/$proxy" ]; then
-        log_info "  Updating $proxy/entrypoint.sh to include $NODE_NAME..."
-        
-        # Get current PG_NODES value
-        CURRENT_NODES=$(grep "^: \"\${PG_NODES:=" "$PROJECT_DIR/$proxy/entrypoint.sh" | sed 's/.*:=\(.*\)}.*/\1/')
-        
-        # Check if pg-5 already in list
-        if echo "$CURRENT_NODES" | grep -q "$NODE_NAME.railway.internal"; then
-            log_warn "  $NODE_NAME already in $proxy configuration"
-        else
-            # Add new node to list
-            NEW_NODES="${CURRENT_NODES},${NODE_NAME}.railway.internal"
-            sed -i "s|^: \"\${PG_NODES:=.*}|: \"\${PG_NODES:=$NEW_NODES}\"|" "$PROJECT_DIR/$proxy/entrypoint.sh"
-            log_success "  Updated $proxy/entrypoint.sh"
-            
-            # Redeploy ProxySQL
-            log_info "  Redeploying $proxy..."
-            cd "$PROJECT_DIR/$proxy"
-            railway service "$proxy" 2>/dev/null || true
-            railway up --detach || {
-                log_warn "  Failed to redeploy $proxy, may need manual deployment"
-            }
-        fi
-    fi
-done
+# Add to ProxySQL instance 1
+log_info "  Adding to proxysql instance 1..."
+railway service proxysql
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"INSERT INTO pgsql_servers(hostgroup_id,hostname,port,weight,max_connections) VALUES (2,'${NODE_NAME}.railway.internal',5432,1000,100) ON CONFLICT DO NOTHING; LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\"" 2>/dev/null && {
+    log_success "  Added to proxysql instance 1"
+} || {
+    log_warn "  Failed to add to proxysql instance 1 (check if already exists or add manually)"
+}
+
+# Add to ProxySQL instance 2
+log_info "  Adding to proxysql-2 instance 2..."
+railway service proxysql-2
+railway run bash -c "PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c \"INSERT INTO pgsql_servers(hostgroup_id,hostname,port,weight,max_connections) VALUES (2,'${NODE_NAME}.railway.internal',5432,1000,100) ON CONFLICT DO NOTHING; LOAD PGSQL SERVERS TO RUNTIME; SAVE PGSQL SERVERS TO DISK;\"" 2>/dev/null && {
+    log_success "  Added to proxysql-2 instance 2"
+} || {
+    log_warn "  Failed to add to proxysql-2 instance 2 (check if already exists or add manually)"
+}
 
 cd "$PROJECT_DIR"
 log_success ""
@@ -196,7 +188,8 @@ log_info "2. Check deployment: railway logs --service $NODE_NAME"
 log_info "3. Verify cluster status:"
 log_info "   railway ssh --service pg-1"
 log_info "   gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show"
-log_info "4. Check ProxySQL discovery:"
-log_info "   railway logs --service proxysql | grep '$NODE_NAME'"
+log_info "4. Verify ProxySQL includes $NODE_NAME:"
+log_info "   railway service proxysql"
+log_info "   railway run bash -c \"PGPASSWORD=admin psql -h 127.0.0.1 -p 6132 -U admin -d proxysql -c 'SELECT * FROM pgsql_servers;'\""
 log_info ""
 log_info "To add another node: $0 $((NODE_NUM + 1))"
