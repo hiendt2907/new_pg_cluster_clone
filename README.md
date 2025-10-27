@@ -195,8 +195,8 @@ railway whoami
 |------|------|
 | Railway Pro Plan | $20/month |
 | 7 services compute | ~$5-15/month |
-| 4 volumes (10GB each) | ~$10/month |
-| **Total** | **$35-45/month** |
+| 6 volumes (4×PostgreSQL + 2×ProxySQL, 10GB each) | ~$15/month |
+| **Total** | **$40-50/month** |
 
 ---
 
@@ -366,16 +366,20 @@ railway link  # Select "pg-cluster" from list
 1. Set shared environment variables
    └─→ ./railway-setup-shared-vars.sh
 
-2. Deploy pg-1 (primary candidate)
+2. Create volumes
+   ├─→ PostgreSQL nodes: /var/lib/postgresql/data (4 volumes)
+   └─→ ProxySQL instances: /var/lib/proxysql (2 volumes)
+
+3. Deploy pg-1 (primary candidate)
    └─→ Wait 30 seconds for initialization
 
-3. Deploy witness
+4. Deploy witness
    └─→ Wait 10 seconds for registration
 
-4. Deploy pg-2, pg-3, pg-4 in parallel
+5. Deploy pg-2, pg-3, pg-4 in parallel
    └─→ Wait 60 seconds for cluster formation
 
-5. Deploy proxysql + proxysql-2 in parallel
+6. Deploy proxysql + proxysql-2 in parallel
    └─→ Wait 30 seconds for service start
 ```
 
@@ -393,8 +397,13 @@ Nếu muốn deploy thủ công qua Railway Dashboard:
 
 3. **Set Environment Variables** (from `.env` files)
 
-4. **Create Volumes** (for pg-1, pg-2, pg-3, pg-4 only)
-   - Mount Path: `/var/lib/postgresql/data`
+4. **Create Volumes**
+   - **PostgreSQL nodes** (pg-1, pg-2, pg-3, pg-4):
+     - Mount Path: `/var/lib/postgresql/data`
+   - **ProxySQL instances** (proxysql, proxysql-2):
+     - Mount Path: `/var/lib/proxysql`
+     - Purpose: Persist configuration after restart
+   - **Witness**: No volume needed (no data storage)
 
 5. **Deploy** (theo sequence trên)
 

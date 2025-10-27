@@ -9,10 +9,22 @@ ProxySQL 3.0.x PostgreSQL module is **still in BETA**. Use with caution in produ
 - **Connection Pooling**: Multiplexing to reduce backend connections
 - **Auto-discovery**: Monitors PostgreSQL nodes and updates topology automatically
 - **High Availability**: Deploy 2 instances for redundancy
+- **Persistent Configuration**: Volume mount at `/var/lib/proxysql` preserves config after restart
 
 ## Ports
 - **6132**: Admin interface (PostgreSQL protocol)
-- **6133**: PostgreSQL traffic proxy
+- **5432**: PostgreSQL traffic proxy (standard PostgreSQL port)
+
+## Volume Mount (Important!)
+ProxySQL requires a **persistent volume** to store configuration:
+- **Mount Path**: `/var/lib/proxysql`
+- **Purpose**: 
+  - Stores ProxySQL.db (SQLite database)
+  - Persists server lists, query rules, users
+  - Prevents reconfiguration on container restart
+- **Size**: 1-5GB recommended
+
+**⚠️ Without volume**: ProxySQL loses all configuration on restart!
 
 ## Configuration
 Environment variables (set via Railway):

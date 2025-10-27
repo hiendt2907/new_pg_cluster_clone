@@ -217,6 +217,14 @@ main() {
     add_volume "pg-4" "/var/lib/postgresql"
     log_info "  Witness does not need a volume"
     
+    # Add volumes for ProxySQL if option 2 is selected
+    if [ "$PROXY_CHOICE" == "2" ]; then
+        log_info ""
+        log_info "Adding volumes to ProxySQL instances..."
+        add_volume "proxysql" "/var/lib/proxysql"
+        add_volume "proxysql-2" "/var/lib/proxysql"
+    fi
+    
     log_info ""
     log_info "Step 3: Deploying services in correct order..."
     
