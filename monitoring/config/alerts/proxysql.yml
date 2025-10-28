@@ -1,0 +1,118 @@
+# ============================================================================
+# ProxySQL Alert Rules
+# ============================================================================
+
+groups:
+  - name: proxysql_availability
+    interval: 30s
+    rules:
+      # ProxySQL down
+      - alert: ProxySQLDown
+        expr: up{job="proxysql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: proxysql
+        annotations:
+          summary: "ProxySQL instance {{ $labels.instance }} is down"
+          description: "ProxySQL on {{ $labels.instance }} has been down for more than 1 minute.\n  Client connections will fail."
+      
+      # No backend servers available
+      - alert: ProxySQLNoBackendsAvailable
+        expr: mysql_global_status_proxysql_backend_servers_online == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: proxysql
+        annotations:
+          summary: "ProxySQL {{ $labels.instance }} has no backend servers"
+          description: "ProxySQL on {{ $labels.instance }} has no online backend servers.\n  All queries will fail."
+
+  - name: proxysql_performance
+    interval: 1m
+    rules:
+      # High connection usage
+      - alert: ProxySQLHighConnectionUsage
+        expr: |
+          (mysql_global_status_client_connections_connected
+          /
+          mysql_global_variables_max_connections) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: proxysql
+        annotations:
+          summary: "ProxySQL {{ $labels.instance }} high connection usage"
+          description: "ProxySQL is using {{ $value }}% of max_connections.\n  Current: {{ $labels.connected }}\n  Max: {{ $labels.max }}"
+      
+      # High query latency
+      - alert: ProxySQLHighQueryLatency
+        expr: mysql_global_status_queries_latency_p99 > 1000
+        for: 10m
+        labels:
+          severity: warning
+          component: proxysql
+        annotations:
+          summary: "ProxySQL {{ $labels.instance }} high query latency"
+          description: "P99 query latency is {{ $value }}ms on {{ $labels.instance }}.\n  Check backend PostgreSQL performance."
+      
+      # Connection errors
+      - alert: ProxySQLConnectionErrors
+        expr: rate(mysql_global_status_connection_errors[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: proxysql
+        annotations:
+          summary: "ProxySQL {{ $labels.instance }} connection errors"
+          description: "{{ $value }} connection errors/sec on {{ $labels.instance }}.\n  Check backend availability and authentication."
+      
+      # Backend server down
+      - alert: ProxySQLBackendDown
+        expr: mysql_global_status_proxysql_backend_servers_status{status="OFFLINE_HARD"} > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: proxysql
+        annotations:
+          summary: "ProxySQL backend {{ $labels.hostgroup }}/{{ $labels.hostname }} is down"
+          description: "Backend server {{ $labels.hostname }} in hostgroup {{ $labels.hostgroup }} is OFFLINE_HARD.\n  Check PostgreSQL instance health."
+      
+      # Backend server slow
+      - alert: ProxySQLBackendSlow
+        expr: mysql_global_status_proxysql_backend_servers_latency_ms > 500
+        for: 10m
+        labels:
+          severity: warning
+          component: proxysql
+        annotations:
+          summary: "ProxySQL backend {{ $labels.hostname }} is slow"
+          description: "Backend {{ $labels.hostname }} has {{ $value }}ms latency.\n  Investigate PostgreSQL performance."
+
+  - name: proxysql_errors
+    interval: 1m
+    rules:
+      # High query error rate
+      - alert: ProxySQLHighQueryErrorRate
+        expr: |
+          rate(mysql_global_status_queries_error[5m])
+          /
+          rate(mysql_global_status_queries[5m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: proxysql
+        annotations:
+          summary: "High query error rate on {{ $labels.instance }}"
+          description: "{{ $value | humanizePercentage }} of queries are failing.\n  Check ProxySQL and PostgreSQL logs."
+      
+      # Connection pool exhausted
+      - alert: ProxySQLConnectionPoolExhausted
+        expr: mysql_global_status_connection_pool_get_conn_failure > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: proxysql
+        annotations:
+          summary: "ProxySQL {{ $labels.instance }} connection pool exhausted"
+          description: "Failed to get connection from pool {{ $value }} times.\n  Increase connection pool size or check backend capacity."

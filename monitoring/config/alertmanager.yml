@@ -1,0 +1,183 @@
+# ============================================================================
+# Alertmanager Configuration - Alert Routing & Notification
+# ============================================================================
+
+global:
+  # The smarthost and SMTP sender used for mail notifications
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alertmanager@pgcluster.local'
+  smtp_auth_username: 'your-email@gmail.com'
+  smtp_auth_password: 'your-app-password'
+  
+  # Slack webhook URL
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+  
+  # Default time to wait before sending notification about new alerts
+  resolve_timeout: 5m
+
+# Templates for notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route tree for notifications
+route:
+  # Default receiver
+  receiver: 'default'
+  
+  # Group by these labels
+  group_by: ['alertname', 'cluster', 'service']
+  
+  # Wait before sending initial notification
+  group_wait: 30s
+  
+  # Wait before sending notification about new alerts added to group
+  group_interval: 5m
+  
+  # Wait before re-sending notification
+  repeat_interval: 4h
+  
+  # Routes for specific alert types
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 30m
+    
+    # Warning alerts - less urgent
+    - match:
+        severity: warning
+      receiver: 'warning'
+      group_wait: 1m
+      group_interval: 5m
+      repeat_interval: 2h
+    
+    # PostgreSQL-specific alerts
+    - match:
+        job: postgresql
+      receiver: 'database-team'
+      group_by: ['alertname', 'instance', 'database']
+    
+    # ProxySQL alerts
+    - match:
+        job: proxysql
+      receiver: 'database-team'
+    
+    # Infrastructure alerts
+    - match:
+        job: node
+      receiver: 'infra-team'
+
+# Inhibition rules (suppress alerts)
+inhibit_rules:
+  # Suppress warning if critical is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+  
+  # Suppress node down if PostgreSQL down (same instance)
+  - source_match:
+      alertname: 'PostgreSQLDown'
+    target_match:
+      alertname: 'NodeDown'
+    equal: ['instance']
+  
+  # Suppress replica lag if primary is down
+  - source_match:
+      alertname: 'PostgreSQLDown'
+      role: 'primary'
+    target_match:
+      alertname: 'PostgreSQLReplicationLag'
+
+# Receivers (notification channels)
+receivers:
+  # Default receiver (logs only)
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook'
+        send_resolved: true
+  
+  # Critical alerts - multiple channels
+  - name: 'critical'
+    email_configs:
+      - to: 'dba-team@company.com,oncall@company.com'
+        headers:
+          Subject: '[CRITICAL] {{ .GroupLabels.alertname }} - PostgreSQL HA Cluster'
+        html: |
+          <h2 style="color: red;">🚨 CRITICAL ALERT</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Cluster:</strong> {{ .GroupLabels.cluster }}</p>
+          <p><strong>Service:</strong> {{ .GroupLabels.service }}</p>
+          <p><strong>Summary:</strong> {{ .CommonAnnotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .CommonAnnotations.description }}</p>
+          <hr>
+          {{ range .Alerts }}
+          <p><strong>Instance:</strong> {{ .Labels.instance }}</p>
+          <p><strong>Severity:</strong> {{ .Labels.severity }}</p>
+          <p><strong>Fired At:</strong> {{ .StartsAt }}</p>
+          {{ end }}
+    
+    slack_configs:
+      - channel: '#alerts-critical'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          *Cluster:* {{ .GroupLabels.cluster }}
+          *Service:* {{ .GroupLabels.service }}
+          *Summary:* {{ .CommonAnnotations.summary }}
+          
+          {{ range .Alerts }}
+          *Instance:* {{ .Labels.instance }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+    
+    # PagerDuty integration (optional)
+    # pagerduty_configs:
+    #   - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+    #     description: '{{ .GroupLabels.alertname }} - {{ .GroupLabels.instance }}'
+  
+  # Warning alerts - email only
+  - name: 'warning'
+    email_configs:
+      - to: 'dba-team@company.com'
+        headers:
+          Subject: '[WARNING] {{ .GroupLabels.alertname }} - PostgreSQL HA Cluster'
+    
+    slack_configs:
+      - channel: '#alerts-warning'
+        title: '⚠️ WARNING: {{ .GroupLabels.alertname }}'
+        text: '{{ .CommonAnnotations.description }}'
+        send_resolved: true
+  
+  # Database team
+  - name: 'database-team'
+    email_configs:
+      - to: 'dba-team@company.com'
+        headers:
+          Subject: '[DB] {{ .GroupLabels.alertname }}'
+    
+    slack_configs:
+      - channel: '#db-alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: |
+          *Severity:* {{ .GroupLabels.severity }}
+          *Summary:* {{ .CommonAnnotations.summary }}
+          {{ range .Alerts }}
+          *Instance:* {{ .Labels.instance }}
+          {{ end }}
+  
+  # Infrastructure team
+  - name: 'infra-team'
+    email_configs:
+      - to: 'infra-team@company.com'
+        headers:
+          Subject: '[INFRA] {{ .GroupLabels.alertname }}'
+    
+    slack_configs:
+      - channel: '#infra-alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ .CommonAnnotations.description }}'

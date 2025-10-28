@@ -31,3 +31,6 @@ yarn-error.log*
 *.tmp
 *.bak
 *.backup
+
+# Docker compose file
+docker-compose.yml

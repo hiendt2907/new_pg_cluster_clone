@@ -1,0 +1,51 @@
+# ============================================================================
+# Grafana Dashboard Provisioning
+# ============================================================================
+
+apiVersion: 1
+
+providers:
+  # PostgreSQL dashboards
+  - name: 'PostgreSQL HA Cluster'
+    orgId: 1
+    folder: 'PostgreSQL'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/postgresql
+      foldersFromFilesStructure: true
+
+  # ProxySQL dashboards
+  - name: 'ProxySQL'
+    orgId: 1
+    folder: 'ProxySQL'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/proxysql
+
+  # System dashboards
+  - name: 'Infrastructure'
+    orgId: 1
+    folder: 'Infrastructure'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/infrastructure
+
+  # LGTM stack monitoring
+  - name: 'Monitoring Stack'
+    orgId: 1
+    folder: 'Monitoring'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/monitoring

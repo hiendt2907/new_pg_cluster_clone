@@ -1,0 +1,87 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                  PostgreSQL HA + LGTM+ Monitoring Stack                   ║
+║                            QUICK ACCESS CARD                              ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+📊 URLS (All services running on localhost):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Grafana       → http://localhost:3000
+Prometheus    → http://localhost:9090
+Loki          → http://localhost:3100
+Mimir         → http://localhost:9009
+Tempo         → http://localhost:3200
+Alertmanager  → http://localhost:9093
+Node Exporter → http://localhost:9100
+cAdvisor      → http://localhost:8080
+
+🔑 LOGIN:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Grafana Username: admin
+Grafana Password: 5QBgYw9LRxZterRN1d3MRUNvUKnAltaHo9LH5c5F6Uc=
+
+⚡ COMMANDS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+cd /root/pg_ha_cluster_production/monitoring
+
+./status.sh                         # Check all services
+./stop.sh                           # Stop all services
+./start.sh                          # Start all services
+
+docker-compose ps                   # List containers
+docker-compose logs -f grafana      # View Grafana logs
+docker-compose logs -f prometheus   # View Prometheus logs
+docker-compose restart mimir        # Restart Mimir
+
+📈 DASHBOARDS (Import in Grafana):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9628  → PostgreSQL Database (recommended)
+1860  → Node Exporter Full (system metrics)
+12859 → ProxySQL (connection pooling)
+13639 → Loki Logs (log visualization)
+
+📂 FILES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINAL_SUMMARY.md      → Complete overview (THIS FILE)
+README.md             → Full documentation (300+ lines)
+SETUP_COMPLETE.md     → Detailed setup guide
+SUMMARY.txt           → Quick reference
+.env                  → Passwords (keep secure!)
+
+🚨 ALERTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+38 alert rules configured:
+  - 16 PostgreSQL alerts (config/alerts/postgresql.yml)
+  - 8 ProxySQL alerts (config/alerts/proxysql.yml)
+  - 14 System alerts (config/alerts/node.yml)
+
+Configure notifications:
+  nano config/alertmanager.yml
+
+📊 METRICS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PostgreSQL: 50+ metrics per node
+  - Connections, TPS, replication lag
+  - Slow queries, locks, cache hit ratio
+  
+ProxySQL: Connection pool, query routing
+System: CPU, Memory, Disk, Network
+Containers: Per-container resources
+
+🔧 CONFIG LOCATIONS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+config/prometheus.yml                   # Scrape targets
+config/alertmanager.yml                 # Email/Slack alerts
+config/loki.yaml                        # Log retention
+config/postgres-exporter-queries.yaml   # Custom PG metrics
+.env                                    # Passwords
+
+💡 TIPS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Mimir/Tempo may restart 1-2 times (normal on first start)
+✓ Services stabilize within 30-60 seconds
+✓ PostgreSQL exporters need running PG cluster
+✓ All datasources auto-configured in Grafana
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 Happy Monitoring! Access Grafana → http://localhost:3000
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

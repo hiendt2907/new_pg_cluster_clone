@@ -1,0 +1,269 @@
+{
+  "dashboard": {
+    "title": "Tempo Service Map & Latency Flow",
+    "tags": ["tempo", "tracing", "service-map", "latency"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Dependency Graph",
+        "type": "nodeGraph",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 12},
+        "datasource": "Tempo",
+        "targets": [
+          {
+            "queryType": "serviceMap",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "nodes": {
+            "mainStatUnit": "ms"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Request Rate by Service",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "sum(rate(traces_service_graph_request_total[5m])) by (client, server)",
+            "legendFormat": "{{client}} → {{server}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Service Latency (p95)",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket[5m])) by (server, le))",
+            "legendFormat": "{{server}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Error Rate by Service",
+        "type": "bargauge",
+        "gridPos": {"x": 0, "y": 20, "w": 8, "h": 8},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "sum(rate(traces_service_graph_request_failed_total[5m])) by (server) / sum(rate(traces_service_graph_request_total[5m])) by (server) * 100",
+            "legendFormat": "{{server}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Latency Distribution Across Services",
+        "type": "heatmap",
+        "gridPos": {"x": 8, "y": 20, "w": 16, "h": 8},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "sum(increase(traces_service_graph_request_server_seconds_bucket[1m])) by (server, le)",
+            "format": "heatmap",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": true,
+          "cellGap": 2,
+          "color": {
+            "mode": "scheme",
+            "scheme": "Turbo"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Top 10 Slowest Traces (Last Hour)",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 28, "w": 24, "h": 8},
+        "datasource": "Tempo",
+        "targets": [
+          {
+            "queryType": "traceql",
+            "query": "{duration > 100ms}",
+            "limit": 10,
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Duration"},
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "ms"
+                }
+              ]
+            }
+          ]
+        },
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "traceID": "Trace ID",
+                "spanID": "Span ID",
+                "duration": "Duration",
+                "serviceName": "Service"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Trace Volume",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 36, "w": 6, "h": 4},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "sum(rate(tempo_ingester_traces_created_total[5m]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "tps",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "text"},
+                {"value": 10, "color": "green"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "graphMode": "area",
+          "textMode": "value_and_name"
+        }
+      },
+      {
+        "id": 8,
+        "title": "Average Trace Duration",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 36, "w": 6, "h": 4},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "avg(tempo_ingester_trace_duration_seconds)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.5, "color": "yellow"},
+                {"value": 1, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Trace Ingestion Rate",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 36, "w": 12, "h": 4},
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "rate(tempo_distributor_spans_received_total[5m])",
+            "legendFormat": "{{protocol}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "spns",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "service",
+          "type": "query",
+          "query": "label_values(traces_service_graph_request_total, server)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "includeAll": true,
+          "multi": true
+        }
+      ]
+    },
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  },
+  "folderId": 0,
+  "overwrite": true
+}

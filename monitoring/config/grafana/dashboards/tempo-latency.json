@@ -1,0 +1,238 @@
+{
+  "dashboard": {
+    "title": "PostgreSQL Query Latency & Tracing",
+    "tags": ["tempo", "postgresql", "latency", "tracing"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Query Latency Distribution (p50, p95, p99)",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(pg_stat_statements_mean_time_bucket[5m])) by (le))",
+            "legendFormat": "p50 - Median",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(pg_stat_statements_mean_time_bucket[5m])) by (le))",
+            "legendFormat": "p95 - 95th percentile",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(pg_stat_statements_mean_time_bucket[5m])) by (le))",
+            "legendFormat": "p99 - 99th percentile",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {
+          "tooltip": {"mode": "multi"},
+          "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max", "last"]}
+        }
+      },
+      {
+        "id": 2,
+        "title": "Database Connection Latency",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 8, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "avg(pg_stat_database_blks_read_time{datname!~\"template.*|postgres\"}) / avg(pg_stat_database_blks_read{datname!~\"template.*|postgres\"})",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 50, "color": "yellow"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Transaction Duration (avg)",
+        "type": "stat",
+        "gridPos": {"x": 8, "y": 8, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "avg(pg_stat_database_xact_commit_time / (pg_stat_database_xact_commit + 1))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 100, "color": "yellow"},
+                {"value": 500, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Slow Queries (>1s)",
+        "type": "table",
+        "gridPos": {"x": 16, "y": 8, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "topk(10, pg_long_running_queries_seconds > 1)",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "auto"
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Request Rate by Database",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(pg_stat_database_xact_commit{datname!~\"template.*|postgres\"}[5m]) + rate(pg_stat_database_xact_rollback{datname!~\"template.*|postgres\"}[5m])",
+            "legendFormat": "{{datname}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Average Query Execution Time",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "avg by (instance) (rate(pg_stat_statements_mean_time_sum[5m]) / rate(pg_stat_statements_mean_time_count[5m]))",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Tempo Traces - Recent Queries",
+        "type": "traces",
+        "gridPos": {"x": 0, "y": 22, "w": 24, "h": 10},
+        "datasource": "Tempo",
+        "targets": [
+          {
+            "queryType": "nativeSearch",
+            "serviceName": "postgresql",
+            "limit": 20,
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showTraceId": true
+        }
+      },
+      {
+        "id": 8,
+        "title": "Latency Heatmap",
+        "type": "heatmap",
+        "gridPos": {"x": 0, "y": 32, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(increase(pg_stat_statements_mean_time_bucket[1m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              }
+            }
+          }
+        },
+        "options": {
+          "calculate": true,
+          "cellGap": 2,
+          "color": {
+            "mode": "scheme",
+            "scheme": "Spectral"
+          },
+          "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+          }
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "instance",
+          "type": "query",
+          "query": "label_values(pg_up, instance)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "includeAll": true,
+          "multi": true
+        },
+        {
+          "name": "database",
+          "type": "query",
+          "query": "label_values(pg_stat_database_xact_commit, datname)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "includeAll": true,
+          "multi": true
+        }
+      ]
+    },
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  },
+  "folderId": 0,
+  "overwrite": true
+}

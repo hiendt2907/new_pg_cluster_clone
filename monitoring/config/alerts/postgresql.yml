@@ -1,0 +1,246 @@
+# ============================================================================
+# PostgreSQL Alert Rules
+# ============================================================================
+
+groups:
+  - name: postgresql_availability
+    interval: 30s
+    rules:
+      # PostgreSQL instance down
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: postgresql
+        annotations:
+          summary: "PostgreSQL instance {{ $labels.instance }} is down"
+          description: "PostgreSQL on {{ $labels.instance }} has been down for more than 1 minute.\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+          runbook_url: "https://docs.postgresql.org/troubleshooting/server-down"
+      
+      # PostgreSQL too many connections
+      - alert: PostgreSQLTooManyConnections
+        expr: |
+          sum by (instance) (pg_stat_activity_count)
+          /
+          sum by (instance) (pg_settings_max_connections) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: postgresql
+        annotations:
+          summary: "PostgreSQL {{ $labels.instance }} has too many connections"
+          description: "PostgreSQL instance {{ $labels.instance }} is using {{ $value }}% of max_connections.\n  Current connections: {{ $value }}\n  Max connections: {{ $labels.max_connections }}"
+      
+      # PostgreSQL max connections reached
+      - alert: PostgreSQLMaxConnectionsReached
+        expr: |
+          sum by (instance) (pg_stat_activity_count)
+          >=
+          sum by (instance) (pg_settings_max_connections)
+        for: 1m
+        labels:
+          severity: critical
+          component: postgresql
+        annotations:
+          summary: "PostgreSQL {{ $labels.instance }} max connections reached"
+          description: "PostgreSQL instance {{ $labels.instance }} has reached max_connections limit.\n  Current connections: {{ $value }}\n  IMMEDIATE ACTION REQUIRED"
+
+  - name: postgresql_replication
+    interval: 30s
+    rules:
+      # Replication lag
+      - alert: PostgreSQLReplicationLag
+        expr: |
+          (pg_replication_lag{application_name="repmgr"} > 10) 
+          and ON (instance) 
+          (pg_replication_is_replica == 1)
+        for: 2m
+        labels:
+          severity: warning
+          component: replication
+        annotations:
+          summary: "PostgreSQL replication lag on {{ $labels.instance }}"
+          description: "Replication lag on {{ $labels.instance }} is {{ $value }} seconds.\n  This may cause data inconsistency."
+      
+      # Critical replication lag
+      - alert: PostgreSQLReplicationLagCritical
+        expr: |
+          (pg_replication_lag{application_name="repmgr"} > 60) 
+          and ON (instance) 
+          (pg_replication_is_replica == 1)
+        for: 5m
+        labels:
+          severity: critical
+          component: replication
+        annotations:
+          summary: "CRITICAL replication lag on {{ $labels.instance }}"
+          description: "Replication lag on {{ $labels.instance }} is {{ $value }} seconds (>1 minute).\n  Replica may be significantly behind primary."
+      
+      # Replication slot inactive
+      - alert: PostgreSQLReplicationSlotInactive
+        expr: pg_replication_slots_active == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: replication
+        annotations:
+          summary: "PostgreSQL replication slot {{ $labels.slot_name }} inactive"
+          description: "Replication slot {{ $labels.slot_name }} on {{ $labels.instance }} has been inactive for 5 minutes.\n  WAL may accumulate and fill disk."
+      
+      # No replicas connected
+      - alert: PostgreSQLNoReplicasConnected
+        expr: |
+          (pg_stat_replication_clients == 0) 
+          and ON (instance) 
+          (pg_replication_is_replica == 0)
+        for: 5m
+        labels:
+          severity: warning
+          component: replication
+        annotations:
+          summary: "No replicas connected to primary {{ $labels.instance }}"
+          description: "Primary {{ $labels.instance }} has no connected replicas.\n  Cluster HA is compromised."
+
+  - name: postgresql_performance
+    interval: 1m
+    rules:
+      # High transaction rate
+      - alert: PostgreSQLHighTransactionRate
+        expr: rate(pg_stat_database_xact_commit{datname!~"template.*"}[5m]) > 10000
+        for: 10m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High transaction rate on {{ $labels.instance }}"
+          description: "Database {{ $labels.datname }} on {{ $labels.instance }} has {{ $value }} transactions/sec.\n  Monitor for performance degradation."
+      
+      # Slow queries
+      - alert: PostgreSQLSlowQueries
+        expr: pg_stat_activity_max_tx_duration{datname!~"template.*|postgres"} > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "Slow queries detected on {{ $labels.instance }}"
+          description: "Longest running query on {{ $labels.instance }} is {{ $value }} seconds.\n  Check pg_stat_activity for blocking queries."
+      
+      # Very slow queries (critical)
+      - alert: PostgreSQLVerySlowQueries
+        expr: pg_stat_activity_max_tx_duration{datname!~"template.*|postgres"} > 1800
+        for: 2m
+        labels:
+          severity: critical
+          component: performance
+        annotations:
+          summary: "CRITICAL: Very slow query on {{ $labels.instance }}"
+          description: "Query running for {{ $value }} seconds (>30 minutes) on {{ $labels.instance }}.\n  May indicate deadlock or runaway query."
+      
+      # High cache miss ratio
+      - alert: PostgreSQLHighCacheMissRatio
+        expr: |
+          (rate(pg_stat_database_blks_read{datname!~"template.*"}[5m])
+          /
+          (rate(pg_stat_database_blks_read{datname!~"template.*"}[5m]) 
+          + rate(pg_stat_database_blks_hit{datname!~"template.*"}[5m]))) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High cache miss ratio on {{ $labels.instance }}"
+          description: "Database {{ $labels.datname }} has {{ $value | humanizePercentage }} cache miss ratio.\n  Consider increasing shared_buffers."
+      
+      # High deadlock rate
+      - alert: PostgreSQLHighDeadlockRate
+        expr: rate(pg_stat_database_deadlocks{datname!~"template.*"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High deadlock rate on {{ $labels.instance }}"
+          description: "Database {{ $labels.datname }} has {{ $value }} deadlocks/sec.\n  Review application transaction logic."
+
+  - name: postgresql_storage
+    interval: 1m
+    rules:
+      # Disk usage high
+      - alert: PostgreSQLDiskUsageHigh
+        expr: |
+          (pg_database_size_bytes / 1024 / 1024 / 1024) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "PostgreSQL disk usage high on {{ $labels.instance }}"
+          description: "Database {{ $labels.datname }} is using {{ $value }}GB of disk space.\n  Consider cleanup or scaling."
+      
+      # WAL files accumulating
+      - alert: PostgreSQLWALFilesAccumulating
+        expr: pg_stat_archiver_archived_count - pg_stat_archiver_archived_count offset 1h < 0
+        for: 30m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "WAL files accumulating on {{ $labels.instance }}"
+          description: "WAL archive is falling behind on {{ $labels.instance }}.\n  Check archival process and disk space."
+      
+      # Table bloat (estimated)
+      - alert: PostgreSQLTableBloatHigh
+        expr: |
+          (pg_stat_user_tables_n_dead_tup / (pg_stat_user_tables_n_live_tup + 1)) > 0.2
+        for: 1h
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "High table bloat on {{ $labels.instance }}"
+          description: "Table {{ $labels.schemaname }}.{{ $labels.relname }} has {{ $value | humanizePercentage }} dead tuples.\n  Run VACUUM ANALYZE."
+
+  - name: postgresql_errors
+    interval: 30s
+    rules:
+      # Too many rollbacks
+      - alert: PostgreSQLTooManyRollbacks
+        expr: |
+          rate(pg_stat_database_xact_rollback{datname!~"template.*"}[5m])
+          /
+          rate(pg_stat_database_xact_commit{datname!~"template.*"}[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: errors
+        annotations:
+          summary: "High rollback rate on {{ $labels.instance }}"
+          description: "Database {{ $labels.datname }} has {{ $value | humanizePercentage }} rollback rate.\n  Check application error handling."
+      
+      # Connection errors
+      - alert: PostgreSQLConnectionErrors
+        expr: rate(pg_stat_database_conflicts_total{datname!~"template.*"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: errors
+        annotations:
+          summary: "Connection conflicts on {{ $labels.instance }}"
+          description: "Database {{ $labels.datname }} has {{ $value }} connection conflicts/sec.\n  Check pg_stat_database_conflicts for details."
+
+  - name: postgresql_backup
+    interval: 5m
+    rules:
+      # No recent backup (if pg_stat_archiver available)
+      - alert: PostgreSQLNoRecentBackup
+        expr: |
+          (time() - pg_stat_archiver_last_archived_time) > 86400
+        for: 1h
+        labels:
+          severity: warning
+          component: backup
+        annotations:
+          summary: "No recent backup on {{ $labels.instance }}"
+          description: "Last successful backup was {{ $value | humanizeDuration }} ago.\n  Check backup process."

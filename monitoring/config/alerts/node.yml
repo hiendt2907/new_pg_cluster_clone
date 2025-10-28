@@ -1,0 +1,194 @@
+# ============================================================================
+# Node/System Alert Rules
+# ============================================================================
+
+groups:
+  - name: node_availability
+    interval: 30s
+    rules:
+      # Node down
+      - alert: NodeDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Node {{ $labels.instance }} is down"
+          description: "Node exporter on {{ $labels.instance }} is unreachable.\n  Server may be down."
+
+  - name: node_resources
+    interval: 1m
+    rules:
+      # High CPU usage
+      - alert: NodeHighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 15m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}.\n  Check for resource-intensive processes."
+      
+      # Critical CPU usage
+      - alert: NodeCriticalCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "CRITICAL CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}.\n  System may become unresponsive."
+      
+      # High memory usage
+      - alert: NodeHighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}.\n  Available: {{ $labels.available }}GB / Total: {{ $labels.total }}GB"
+      
+      # Critical memory usage
+      - alert: NodeCriticalMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "CRITICAL memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}.\n  Risk of OOM killer."
+      
+      # High disk usage
+      - alert: NodeHighDiskUsage
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} 
+          / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"})) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} is {{ $value }}% full on {{ $labels.instance }}.\n  Plan for disk expansion."
+      
+      # Critical disk usage
+      - alert: NodeCriticalDiskUsage
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} 
+          / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"})) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "CRITICAL disk usage on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} is {{ $value }}% full on {{ $labels.instance }}.\n  IMMEDIATE ACTION REQUIRED - may cause service failure."
+      
+      # Disk will fill in 4 hours (based on trend)
+      - alert: NodeDiskWillFillSoon
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"}[1h], 4*3600) < 0
+        for: 30m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} will fill soon on {{ $labels.instance }}"
+          description: "Based on current trend, disk {{ $labels.mountpoint }} will fill in ~4 hours.\n  Free up space or expand disk."
+
+  - name: node_performance
+    interval: 1m
+    rules:
+      # High disk I/O wait
+      - alert: NodeHighDiskIOWait
+        expr: |
+          avg by (instance) (irate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100 > 20
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High disk I/O wait on {{ $labels.instance }}"
+          description: "I/O wait is {{ $value }}% on {{ $labels.instance }}.\n  Disk may be bottleneck."
+      
+      # High network errors
+      - alert: NodeHighNetworkErrors
+        expr: |
+          rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High network errors on {{ $labels.instance }}"
+          description: "{{ $value }} network errors/sec on {{ $labels.instance }} interface {{ $labels.device }}.\n  Check network hardware."
+      
+      # High context switches
+      - alert: NodeHighContextSwitches
+        expr: rate(node_context_switches_total[5m]) > 100000
+        for: 15m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High context switches on {{ $labels.instance }}"
+          description: "{{ $value }} context switches/sec on {{ $labels.instance }}.\n  May indicate CPU thrashing or too many processes."
+      
+      # System load high
+      - alert: NodeHighSystemLoad
+        expr: |
+          node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 1.5
+        for: 15m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High system load on {{ $labels.instance }}"
+          description: "15-minute load average is {{ $value }} on {{ $labels.instance }}.\n  System is under heavy load."
+
+  - name: node_errors
+    interval: 1m
+    rules:
+      # Filesystem read-only
+      - alert: NodeFilesystemReadOnly
+        expr: node_filesystem_readonly{fstype!~"tmpfs|fuse.lxcfs"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Filesystem read-only on {{ $labels.instance }}"
+          description: "Filesystem {{ $labels.mountpoint }} is mounted read-only on {{ $labels.instance }}.\n  Check disk health (SMART errors, hardware failure)."
+      
+      # Too many open files
+      - alert: NodeTooManyOpenFiles
+        expr: |
+          (node_filefd_allocated / node_filefd_maximum) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Too many open files on {{ $labels.instance }}"
+          description: "{{ $value }}% of max file descriptors used on {{ $labels.instance }}.\n  Increase fs.file-max or check for file descriptor leaks."
+      
+      # Clock skew
+      - alert: NodeClockSkew
+        expr: abs(node_timex_offset_seconds) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Clock skew detected on {{ $labels.instance }}"
+          description: "Clock offset is {{ $value }} seconds on {{ $labels.instance }}.\n  May cause distributed system issues (replication, logs)."

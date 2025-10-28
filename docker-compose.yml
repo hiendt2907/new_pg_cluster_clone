@@ -5,13 +5,17 @@ services:
     environment:
       - NODE_NAME=pg-1
       - NODE_ID=1
-      - POSTGRES_PASSWORD=postgrespass
-      - REPMGR_PASSWORD=repmgrpass
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
       - PEERS=pg-2,pg-3
     volumes:
       - pg-1_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    labels:
+      - cluster=pg_ha_cluster
 
   pg-2:
     build: .
@@ -19,13 +23,17 @@ services:
     environment:
       - NODE_NAME=pg-2
       - NODE_ID=2
-      - POSTGRES_PASSWORD=postgrespass
-      - REPMGR_PASSWORD=repmgrpass
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
       - PEERS=pg-1,pg-3
     volumes:
       - pg-2_data:/var/lib/postgresql/data
     depends_on:
       - pg-1
+    labels:
+      - cluster=pg_ha_cluster
 
   pg-3:
     build: .
@@ -33,13 +41,17 @@ services:
     environment:
       - NODE_NAME=pg-3
       - NODE_ID=3
-      - POSTGRES_PASSWORD=postgrespass
-      - REPMGR_PASSWORD=repmgrpass
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
       - PEERS=pg-1,pg-2
     volumes:
       - pg-3_data:/var/lib/postgresql/data
     depends_on:
       - pg-1
+    labels:
+      - cluster=pg_ha_cluster
 
   pg-4:
     build: .
@@ -47,13 +59,17 @@ services:
     environment:
       - NODE_NAME=pg-4
       - NODE_ID=4
-      - POSTGRES_PASSWORD=postgrespass
-      - REPMGR_PASSWORD=repmgrpass
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
       - PEERS=pg-1,pg-2
     volumes:
       - pg-4_data:/var/lib/postgresql/data
     depends_on:
       - pg-1
+    labels:
+      - cluster=pg_ha_cluster
 
   witness:
     build: .
@@ -62,13 +78,305 @@ services:
       - NODE_NAME=witness
       - NODE_ID=99
       - IS_WITNESS=true
-      - REPMGR_PASSWORD=repmgrpass
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
       - PRIMARY_HOST=pg-1
       - PEERS=pg-1,pg-2,pg-3
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
     # witness không cần volume data vì không chạy postgres cluster
+    labels:
+      - cluster=pg_ha_cluster
+
+  pgpool-1:
+    build: ./pgpool
+    container_name: pgpool-1
+    environment:
+      - PGPOOL_NODE_ID=1
+      - PGPOOL_HOSTNAME=pgpool-1
+      - OTHER_PGPOOL_HOSTNAME=pgpool-2
+      - OTHER_PGPOOL_PORT=5432
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
+    ports:
+      - "15432:5432"      # PostgreSQL protocol
+      - "19898:9898"      # PCP (Pgpool Control Protocol)
+    depends_on:
+      - pg-1
+      - pg-2
+      - pg-3
+      - pg-4
+    networks:
+      - default
+    labels:
+      - cluster=pg_ha_cluster
+
+  pgpool-2:
+    build: ./pgpool
+    container_name: pgpool-2
+    environment:
+      - PGPOOL_NODE_ID=2
+      - PGPOOL_HOSTNAME=pgpool-2
+      - OTHER_PGPOOL_HOSTNAME=pgpool-1
+      - OTHER_PGPOOL_PORT=5432
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REPMGR_PASSWORD=${REPMGR_PASSWORD}
+      - APP_READONLY_PASSWORD=${APP_READONLY_PASSWORD}
+      - APP_READWRITE_PASSWORD=${APP_READWRITE_PASSWORD}
+    ports:
+      - "15433:5432"      # PostgreSQL protocol
+      - "19899:9898"      # PCP (Pgpool Control Protocol)
+    depends_on:
+      - pg-1
+      - pg-2
+      - pg-3
+      - pg-4
+    networks:
+      - default
+    labels:
+      - cluster=pg_ha_cluster
+
+  postgres_exporter_pg1:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter_pg1
+    environment:
+      - DATA_SOURCE_NAME=postgresql://monitoring:${MONITORING_PASSWORD}@pg-1:5432/postgres?sslmode=disable
+      - PG_EXPORTER_EXTEND_QUERY_PATH=/etc/postgres_exporter/queries.yaml
+      - PG_EXPORTER_AUTO_DISCOVER_DATABASES=true
+    volumes:
+      - ./monitoring/config/postgres-exporter-queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    depends_on:
+      - pg-1
+    ports:
+      - "9187:9187"
+    labels:
+      - cluster=pg_ha_cluster
+
+  postgres_exporter_pg2:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter_pg2
+    environment:
+      - DATA_SOURCE_NAME=postgresql://monitoring:${MONITORING_PASSWORD}@pg-2:5432/postgres?sslmode=disable
+      - PG_EXPORTER_EXTEND_QUERY_PATH=/etc/postgres_exporter/queries.yaml
+      - PG_EXPORTER_AUTO_DISCOVER_DATABASES=true
+    volumes:
+      - ./monitoring/config/postgres-exporter-queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    depends_on:
+      - pg-2
+    ports:
+      - "9188:9187"
+    labels:
+      - cluster=pg_ha_cluster
+
+  postgres_exporter_pg3:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter_pg3
+    environment:
+      - DATA_SOURCE_NAME=postgresql://monitoring:${MONITORING_PASSWORD}@pg-3:5432/postgres?sslmode=disable
+      - PG_EXPORTER_EXTEND_QUERY_PATH=/etc/postgres_exporter/queries.yaml
+      - PG_EXPORTER_AUTO_DISCOVER_DATABASES=true
+    volumes:
+      - ./monitoring/config/postgres-exporter-queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    depends_on:
+      - pg-3
+    ports:
+      - "9189:9187"
+    labels:
+      - cluster=pg_ha_cluster
+
+  postgres_exporter_pg4:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter_pg4
+    environment:
+      - DATA_SOURCE_NAME=postgresql://monitoring:${MONITORING_PASSWORD}@pg-4:5432/postgres?sslmode=disable
+      - PG_EXPORTER_EXTEND_QUERY_PATH=/etc/postgres_exporter/queries.yaml
+      - PG_EXPORTER_AUTO_DISCOVER_DATABASES=true
+    volumes:
+      - ./monitoring/config/postgres-exporter-queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    depends_on:
+      - pg-4
+    ports:
+      - "9190:9187"
+    labels:
+      - cluster=pg_ha_cluster
+
+  node_exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node_exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.netdev.device-exclude=^(veth.*|docker.*|br-.*)'
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "9100:9100"
+    labels:
+      - cluster=pg_ha_cluster
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    privileged: true
+    devices:
+      - /dev/kmsg
+    labels:
+      - cluster=pg_ha_cluster
+
+  mimir:
+    image: grafana/mimir:2.11.0
+    container_name: mimir
+    command:
+      - '-config.file=/etc/mimir/mimir.yaml'
+      - '-target=all'
+    volumes:
+      - ./monitoring/config/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir_data:/data
+    ports:
+      - "9009:9009"
+      - "9095:9095"
+    labels:
+      - cluster=pg_ha_cluster
+
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: loki
+    command:
+      - '-config.file=/etc/loki/loki.yaml'
+    volumes:
+      - ./monitoring/config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    labels:
+      - cluster=pg_ha_cluster
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: promtail
+    command:
+      - '-config.file=/etc/promtail/promtail.yaml'
+    volumes:
+      - ./monitoring/config/promtail.yaml:/etc/promtail/promtail.yaml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    labels:
+      - cluster=pg_ha_cluster
+
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: tempo
+    command:
+      - '-config.file=/etc/tempo/tempo.yaml'
+    volumes:
+      - ./monitoring/config/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+      - "9411:9411"
+      - "14268:14268"
+    labels:
+      - cluster=pg_ha_cluster
+
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.size=5GB'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--enable-feature=exemplar-storage'
+      - '--enable-feature=native-histograms'
+    volumes:
+      - ./monitoring/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/config/alerts/:/etc/prometheus/alerts/:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - postgres_exporter_pg1
+      - postgres_exporter_pg2
+      - postgres_exporter_pg3
+      - postgres_exporter_pg4
+      - node_exporter
+      - cadvisor
+      - loki
+      - tempo
+      - mimir
+    labels:
+      - cluster=pg_ha_cluster
+
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+      - '--cluster.advertise-address=0.0.0.0:9093'
+    volumes:
+      - ./monitoring/config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
+    labels:
+      - cluster=pg_ha_cluster
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=adminpass
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_SERVER_DOMAIN=localhost
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel,grafana-polystat-panel
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,metricsSummary,tempoSearch,tempoServiceGraph,tempoApmTable
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_ALERTING_ENABLED=false
+      - GF_DATABASE_TYPE=sqlite3
+      - GF_DATABASE_PATH=/var/lib/grafana/grafana.db
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+      - mimir
+    labels:
+      - cluster=pg_ha_cluster
 
 volumes:
   pg-1_data:
   pg-2_data:
   pg-3_data:
   pg-4_data:
+  mimir_data:
+  loki_data:
+  tempo_data:
+  grafana_data:
+  alertmanager_data:

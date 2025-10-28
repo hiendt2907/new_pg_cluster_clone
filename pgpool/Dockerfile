@@ -1,18 +1,34 @@
-FROM postgres:17
+FROM debian:bookworm-slim
 
-# Install pgpool-II
-RUN apt-get update && apt-get install -y \
+# Install PostgreSQL client, pgpool2, and utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pgpool2 \
-    postgresql-17-pgpool2 \
+    postgresql-client-15 \
+    postgresql-client-common \
     curl \
     jq \
-    python3 \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
-COPY entrypoint.sh /entrypoint.sh
-COPY monitor.sh /usr/local/bin/monitor.sh
-RUN chmod +x /entrypoint.sh /usr/local/bin/monitor.sh
+# Create necessary directories
+RUN mkdir -p /etc/pgpool-II /var/run/pgpool /var/log/pgpool /config \
+    && chown -R postgres:postgres /etc/pgpool-II /var/run/pgpool /var/log/pgpool
 
-EXPOSE 5432 9999
+# Copy configuration files to /config (will be copied to /etc/pgpool-II at runtime)
+COPY pgpool.conf /config/
+COPY pool_hba.conf /config/
+COPY pcp.conf /config/
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Copy scripts
+COPY entrypoint.sh /usr/local/bin/
+COPY monitor.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh
+
+# Expose ports
+# 5432 - PostgreSQL protocol
+# 9898 - PCP (Pgpool Control Protocol)
+# 9000 - Watchdog
+# 9694 - Heartbeat
+EXPOSE 5432 9898 9000 9694
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

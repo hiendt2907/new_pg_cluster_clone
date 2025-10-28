@@ -1,0 +1,23 @@
+{
+  "name": "pg-ha-cluster-test",
+  "version": "1.0.0",
+  "description": "Load testing app for PostgreSQL HA Cluster with ProxySQL",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js",
+    "load-test": "node load-test.js",
+    "test-routing": "node test-routing.js"
+  },
+  "keywords": [
+    "postgresql",
+    "proxysql",
+    "load-test",
+    "ha-cluster"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}

@@ -1,16 +1,15 @@
 # Quick Start Guide
 
-Get your PostgreSQL HA cluster running in **5 minutes**.
+Get your PostgreSQL HA cluster running in **5 minutes** with **secure auto-generated passwords**.
 
 ---
 
 ## Prerequisites
 
-- Railway account ([sign up free](https://railway.app/))
-- Railway CLI installed:
-  ```bash
-  curl -fsSL https://railway.app/install.sh | sh
-  ```
+- Docker 20.10+ & Docker Compose 2.0+
+- 4GB+ RAM
+- 20GB+ disk space
+- `openssl` command (for password generation)
 
 ---
 
@@ -19,13 +18,7 @@ Get your PostgreSQL HA cluster running in **5 minutes**.
 ```bash
 # Clone repository
 git clone https://github.com/hiendt2907/new_pg_cluster_clone.git
-cd new_pg_cluster_clone
-
-# Login to Railway
-railway login
-
-# Create new project or link existing
-railway link
+cd pg_ha_cluster_production
 ```
 
 ---
@@ -33,90 +26,98 @@ railway link
 ## Step 2: Generate Passwords (10 seconds)
 
 ```bash
-./railway-setup-shared-vars.sh
+# Generate secure random passwords
+./scripts/generate-passwords.sh
 ```
 
-**Output:**
-```
-[SUCCESS] Generated: POSTGRES_PASSWORD (32 chars)
-[SUCCESS] Generated: REPMGR_PASSWORD (32 chars)
-[SUCCESS] Generated: APP_READONLY_PASSWORD (32 chars)
-[SUCCESS] Generated: APP_READWRITE_PASSWORD (32 chars)
-[SUCCESS] Generated: PROXYSQL_ADMIN_PASSWORD (32 chars)
+This creates `.env` file with:
+- ✅ 24-character random passwords
+- ✅ Secure for production use
+- ✅ Automatically used by docker-compose
 
-⚠️  Save these passwords securely!
-```
-
-**Note:** Passwords are automatically stored in Railway environment variables.
+**⚠️ Important:** `.env` is in `.gitignore` - never commit it to Git!
 
 ---
 
-## Step 3: Deploy Cluster (3-5 minutes)
+## Step 3: Start Cluster (2-3 minutes)
 
 ```bash
-./railway-deploy.sh
-```
+# Start all services
+docker-compose up -d
 
-**Choose ProxySQL option:**
-```
-Select connection pooling solution:
-1) No proxy (direct connections)
-2) ProxySQL 3.0 BETA (2 instances for HA)  ← Choose this
-3) pgpool-II
-
-Your choice: 2
+# Wait for cluster to initialize (30-60 seconds)
+sleep 60
 ```
 
 **Deployment Progress:**
 ```
-[INFO] Deploying primary node (pg-1)...
-[INFO] Deploying witness node...
-[INFO] Deploying standby nodes (pg-2, pg-3, pg-4)...
-[INFO] Deploying ProxySQL instances...
-[SUCCESS] All services deployed!
+Creating pg-1    ... done
+Creating witness ... done
+Creating pg-2    ... done
+Creating pg-3    ... done
+Creating pg-4    ... done
+Creating pgpool-1 ... done
+Creating pgpool-2 ... done
 ```
 
 ---
 
-## Step 4: Save Credentials (30 seconds)
-
-After deployment completes, you'll see:
+## Step 3: Verify Cluster (30 seconds)
 
 ```bash
-cat cluster-security-info.txt
+# Check all services are running
+docker-compose ps
+
+# Check pgpool status
+docker exec pgpool-1 psql -h localhost -p 5432 -U postgres -c "SHOW POOL_NODES;"
 ```
 
-**This file contains:**
-- All 5 passwords (plaintext)
-- Connection strings (PostgreSQL, Python, Node.js)
-- ProxySQL admin commands
-- Operational procedures
-
-**⚠️ CRITICAL:**
-1. **Save** this file to your password manager (1Password, LastPass, etc.)
-2. **Delete** the local file:
-   ```bash
-   rm cluster-security-info.txt
-   ```
-3. **Never commit** to Git (already in .gitignore)
+**Expected Output:**
+```
+ node_id | hostname | port | status | pg_status | role    
+---------+----------+------+--------+-----------+---------
+ 0       | pg-1     | 5432 | up     | up        | primary 
+ 1       | pg-2     | 5432 | up     | up        | standby 
+ 2       | pg-3     | 5432 | up     | up        | standby 
+ 3       | pg-4     | 5432 | up     | up        | standby 
+```
 
 ---
 
-## Step 5: Get Public URL (30 seconds)
+## Step 4: View Credentials (10 seconds)
 
 ```bash
-# Get ProxySQL public domain
-railway service proxysql
-railway domain
+# Display all connection info & passwords
+./scripts/show-credentials.sh
 ```
 
-**Output:**
-```
-Service: proxysql
-Domain: proxysql-production-abc123.up.railway.app
+This shows:
+- ✅ All user passwords
+- ✅ Connection strings for Node.js, Python, psql
+- ✅ Monitoring dashboard URLs
+- ✅ Quick commands
+
+---
+
+## Step 5: Verify Cluster (30 seconds)
+
+```bash
+# Check all services are running
+docker-compose ps
+
+# Check pgpool status
+docker exec pgpool-1 psql -h localhost -p 5432 -U postgres -c "SHOW POOL_NODES;"
 ```
 
-**Copy this domain** - you'll need it for connections.
+**Expected Output:**
+```
+ node_id | hostname | port | status | pg_status | role    
+---------+----------+------+--------+-----------+---------
+ 0       | pg-1     | 5432 | up     | up        | primary 
+ 1       | pg-2     | 5432 | up     | up        | standby 
+ 2       | pg-3     | 5432 | up     | up        | standby 
+ 3       | pg-4     | 5432 | up     | up        | standby 
+```
 
 ---
 
@@ -125,24 +126,21 @@ Domain: proxysql-production-abc123.up.railway.app
 ### Using psql
 
 ```bash
-# Replace <password> and <domain> with your values
-psql "postgresql://app_readwrite:<password>@<proxysql-domain>:5432/postgres"
+# Get password from show-credentials.sh, then connect via pgpool-1
+PGPASSWORD='YOUR_PASSWORD' psql -h localhost -p 15432 -U app_readwrite -d postgres
 ```
 
-**Example:**
-```bash
-psql "postgresql://app_readwrite:xYz123...@proxysql-production-abc123.up.railway.app:5432/postgres"
-```
+### Or use the full connection string from show-credentials.sh
 
 ### Test Query
 
 ```sql
 -- Check connection
-SELECT current_user, version();
+SELECT current_user, inet_server_addr(), version();
 
 -- Create test table
 CREATE TABLE test (id serial PRIMARY KEY, name text);
-INSERT INTO test (name) VALUES ('Hello from Railway!');
+INSERT INTO test (name) VALUES ('Hello from pgpool!');
 SELECT * FROM test;
 
 -- Cleanup
@@ -156,7 +154,10 @@ DROP TABLE test;
 ### 1. Check Cluster Status
 
 ```bash
-railway ssh --service pg-1
+# SSH into pg-1
+docker exec -it pg-1 bash
+
+# Check repmgr cluster
 gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
 ```
 
@@ -171,40 +172,40 @@ gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
  99 | witness | witness | * running | pg-1     | default
 ```
 
-### 2. Check ProxySQL Status
+### 2. Check Pgpool Status
 
 ```bash
-railway ssh --service proxysql
-
-# Access ProxySQL admin (get password from cluster-security-info.txt)
-PGPASSWORD='<admin_password>' psql -h 127.0.0.1 -p 6132 -U admin -d proxysql
-
-# Check servers
-SELECT hostgroup_id, hostname, status, Queries, Latency_us 
-FROM stats_pgsql_connection_pool;
+docker exec pgpool-1 psql -h localhost -p 5432 -U postgres -c "SHOW POOL_NODES;"
 ```
 
 **Expected Output:**
 ```
- hostgroup_id |        hostname          | status  | Queries | Latency_us
---------------+--------------------------+---------+---------+-----------
-            1 | pg-1.railway.internal    | ONLINE  |     123 |       250
-            2 | pg-2.railway.internal    | ONLINE  |      45 |       180
-            2 | pg-3.railway.internal    | ONLINE  |      67 |       200
-            2 | pg-4.railway.internal    | ONLINE  |      89 |       190
+ node_id | hostname | port | status | pg_status | role    | select_cnt | load_balance_node
+---------+----------+------+--------+-----------+---------+------------+-------------------
+ 0       | pg-1     | 5432 | up     | up        | primary | 0          | false
+ 1       | pg-2     | 5432 | up     | up        | standby | 45         | true
+ 2       | pg-3     | 5432 | up     | up        | standby | 67         | true
+ 3       | pg-4     | 5432 | up     | up        | standby | 89         | true
 ```
 
 ### 3. Test Read/Write Splitting
 
 ```bash
-# Write query (goes to primary)
-psql "postgresql://app_readwrite:<password>@<proxysql-domain>:5432/postgres" \
-  -c "INSERT INTO test (name) VALUES ('write test');"
+cd test-app
+npm install
 
-# Read query (goes to standbys)
-psql "postgresql://app_readonly:<password>@<proxysql-domain>:5432/postgres" \
-  -c "SELECT * FROM test;"
+# Simple cluster test (recommended)
+node test-simple.js
+
+# Test INSERT routing
+node test-insert-routing.js
 ```
+
+**Expected Results:**
+- ✅ Connection to Pgpool successful
+- ✅ INSERT → PRIMARY
+- ✅ SELECT → STANDBYs (load-balanced)
+- ✅ Transactions work correctly
 
 ---
 
@@ -213,12 +214,15 @@ psql "postgresql://app_readonly:<password>@<proxysql-domain>:5432/postgres" \
 ### For Development
 ```bash
 # View logs
-railway logs --service pg-1
-railway logs --service proxysql
+docker-compose logs -f pgpool-1
+docker-compose logs -f pg-1
 
 # Monitor cluster
-railway ssh --service pg-1
+docker exec -it pg-1 bash
 gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
+
+# Access monitoring
+open http://localhost:3001  # Grafana (admin/admin)
 ```
 
 ### For Production
@@ -228,25 +232,25 @@ gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
    # Read security guide
    cat SECURITY.md
    
-   # Verify ProxySQL admin port NOT public
-   nmap -p 6132 <proxysql-domain>  # Should be closed
+   # Change default passwords
+   docker exec pg-1 psql -U postgres -c "ALTER USER postgres WITH PASSWORD 'new_secure_pass';"
    ```
 
 2. **Set Up Monitoring:**
-   - Railway metrics dashboard
-   - Custom alerts (connections, query latency, replication lag)
+   - Grafana dashboards: http://localhost:3001
+   - Pre-configured dashboards for PostgreSQL, pgpool, infrastructure
 
 3. **Plan Scaling:**
    ```bash
-   # Add more PostgreSQL nodes
-   ./railway-add-node.sh 5  # Adds pg-5
+   # Add more PostgreSQL nodes (future)
+   # Add more pgpool instances
    
    # Read scaling guide
    cat SCALING_GUIDE.md
    ```
 
 4. **Document Procedures:**
-   - Password rotation (every 90 days)
+   - Password rotation
    - Backup/restore testing
    - Incident response
 
@@ -256,54 +260,52 @@ gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
 
 ### Issue: Can't connect to database
 
-**Check 1:** Verify ProxySQL domain
+**Check 1:** Verify pgpool is running
 ```bash
-railway service proxysql
-railway domain
+docker ps | grep pgpool
 ```
 
 **Check 2:** Test connection
 ```bash
-psql "postgresql://app_readwrite:<password>@<domain>:5432/postgres" -c "SELECT 1;"
+psql -h localhost -p 15432 -U postgres -c "SELECT 1;"
 ```
 
 **Check 3:** View logs
 ```bash
-railway logs --service proxysql
+docker logs pgpool-1
 ```
 
 ### Issue: Cluster not forming
 
 **Check 1:** View pg-1 logs
 ```bash
-railway logs --service pg-1
+docker logs pg-1
 ```
 
-**Check 2:** SSH into pg-1
+**Check 2:** Check repmgr status
 ```bash
-railway ssh --service pg-1
-gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
+docker exec pg-1 gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
 ```
 
-**Check 3:** Verify environment variables
+**Check 3:** Verify network
 ```bash
-railway variables
+docker network inspect pg_ha_cluster_production_pg_cluster_network
 ```
 
-### Issue: Permission denied
+### Issue: Pgpool cannot detect PRIMARY
 
-**Cause:** Using wrong user or password
+**Cause:** sr_check_user authentication failed
 
 **Solution:**
 ```bash
-# Read-only user can only SELECT
-psql "postgresql://app_readonly:<password>@<domain>:5432/postgres"
+# Check logs
+docker logs pgpool-1 | grep sr_check
 
-# Read-write user can INSERT/UPDATE/DELETE
-psql "postgresql://app_readwrite:<password>@<domain>:5432/postgres"
+# Verify repmgr user
+docker exec pg-1 psql -U repmgr -c "SELECT 1"
 
-# Superuser (admin only, NOT for apps)
-psql "postgresql://postgres:<password>@<domain>:5432/postgres"
+# Reload pgpool
+docker restart pgpool-1
 ```
 
 ---
@@ -313,38 +315,36 @@ psql "postgresql://postgres:<password>@<domain>:5432/postgres"
 | File | Description |
 |------|-------------|
 | [README.md](README.md) | Complete architecture and configuration guide |
-| [SECURITY.md](SECURITY.md) | Security guide, penetration testing, incident response |
-| [SCALING_GUIDE.md](SCALING_GUIDE.md) | How to add/remove PostgreSQL nodes |
+| [PGPOOL_DEPLOYMENT.md](PGPOOL_DEPLOYMENT.md) | Pgpool-II detailed documentation |
+| [SECURITY.md](SECURITY.md) | Security guide and best practices |
+| [SCALING_GUIDE.md](SCALING_GUIDE.md) | How to add/remove nodes |
 
 ---
 
 ## 💡 Quick Reference
 
-### Railway CLI Commands
+### Docker Commands
 ```bash
 # View all services
-railway status
+docker-compose ps
 
-# Switch service
-railway service <service-name>
+# Start/stop cluster
+docker-compose up -d
+docker-compose down
 
 # View logs
-railway logs --service <service-name>
+docker-compose logs -f <service-name>
 
-# SSH into service
-railway ssh --service <service-name>
+# Restart service
+docker restart <service-name>
 
-# Get public domain
-railway domain
-
-# Environment variables
-railway variables
-railway variables --set "KEY=value"
+# Execute command in container
+docker exec -it <service-name> bash
 ```
 
 ### PostgreSQL Commands
 ```bash
-# Inside container (after railway ssh)
+# Inside container (after docker exec)
 gosu postgres psql -U postgres
 
 # Check cluster status
@@ -354,17 +354,16 @@ gosu postgres repmgr -f /etc/repmgr/repmgr.conf cluster show
 gosu postgres psql -c "SELECT * FROM pg_stat_replication;"
 ```
 
-### ProxySQL Commands
+### Pgpool Commands
 ```bash
-# Access admin interface (Railway SSH only)
-railway ssh --service proxysql
-PGPASSWORD='<admin_pass>' psql -h 127.0.0.1 -p 6132 -U admin -d proxysql
+# Show pool nodes
+docker exec pgpool-1 psql -h localhost -p 5432 -U postgres -c "SHOW POOL_NODES;"
 
-# Useful queries
-SELECT * FROM stats_pgsql_connection_pool;
-SELECT * FROM pgsql_servers;
-SELECT * FROM pgsql_users;
-SELECT * FROM stats_pgsql_query_digest ORDER BY sum_time DESC LIMIT 10;
+# Show pool processes
+docker exec pgpool-1 psql -h localhost -p 5432 -U postgres -c "SHOW POOL_PROCESSES;"
+
+# Reload config
+docker exec pgpool-1 pcp_reload_config -h localhost -p 9898 -U postgres -w
 ```
 
 ---
@@ -373,21 +372,23 @@ SELECT * FROM stats_pgsql_query_digest ORDER BY sum_time DESC LIMIT 10;
 
 Your PostgreSQL HA cluster is now running with:
 - ✅ 4 PostgreSQL nodes + witness
-- ✅ 2 ProxySQL instances (60,000 connections)
-- ✅ Automatic failover
+- ✅ 2 Pgpool-II instances for HA
+- ✅ Automatic failover (repmgr)
 - ✅ Query routing (write→primary, read→standbys)
-- ✅ Security hardening (strong passwords, audit logging)
+- ✅ SCRAM-SHA-256 authentication
+- ✅ Monitoring stack (Grafana, Prometheus, Loki)
 
 **Next Steps:**
 1. Build your application
-2. Review [SECURITY.md](SECURITY.md) before production
-3. Set up monitoring and alerts
-4. Test disaster recovery procedures
+2. Review [PGPOOL_DEPLOYMENT.md](PGPOOL_DEPLOYMENT.md) for advanced config
+3. Set up monitoring alerts
+4. Test failover procedures
 
-**Need help?** Check the full [README.md](README.md) or open an issue on GitHub.
+**Need help?** Check the full [README.md](README.md) or consult [PGPOOL_DEPLOYMENT.md](PGPOOL_DEPLOYMENT.md).
 
 ---
 
-**Last Updated:** October 27, 2025  
-**Railway Platform:** https://railway.app  
-**PostgreSQL Docs:** https://www.postgresql.org/docs/17/
+**Last Updated:** October 28, 2025  
+**PostgreSQL:** 17.6  
+**Pgpool-II:** 4.3.5 (tamahomeboshi)
+

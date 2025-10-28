@@ -1,0 +1,185 @@
+# ============================================================================
+# Prometheus Configuration for PostgreSQL HA Cluster
+# ============================================================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'pg_ha_cluster'
+    environment: 'production'
+    monitor: 'lgtm-stack'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+      timeout: 10s
+
+# Load rules
+rule_files:
+  - '/etc/prometheus/alerts/*.yml'
+
+# Remote write to Mimir for long-term storage
+remote_write:
+  - url: http://mimir:9009/api/v1/push
+    queue_config:
+      capacity: 10000
+      max_shards: 10
+      min_shards: 1
+      max_samples_per_send: 5000
+      batch_send_deadline: 5s
+      min_backoff: 30ms
+      max_backoff: 100ms
+
+# Scrape configurations
+scrape_configs:
+  # ========================================
+  # Prometheus Self-Monitoring
+  # ========================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ========================================
+  # PostgreSQL Metrics (via postgres_exporter)
+  # ========================================
+  - job_name: 'postgresql'
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - 'postgres_exporter_pg1:9187'
+        labels:
+          instance: 'pg-1'
+          node: 'pg-1'
+          role: 'primary'
+          
+      - targets:
+          - 'postgres_exporter_pg2:9187'
+        labels:
+          instance: 'pg-2'
+          node: 'pg-2'
+          role: 'standby'
+          
+      - targets:
+          - 'postgres_exporter_pg3:9187'
+        labels:
+          instance: 'pg-3'
+          node: 'pg-3'
+          role: 'standby'
+          
+      - targets:
+          - 'postgres_exporter_pg4:9187'
+        labels:
+          instance: 'pg-4'
+          node: 'pg-4'
+          role: 'standby'
+    metric_relabel_configs:
+      # Drop metrics we don't need to save storage
+      - source_labels: [__name__]
+        regex: 'pg_stat_bgwriter_.*'
+        action: keep
+      - source_labels: [__name__]
+        regex: 'pg_stat_database_.*'
+        action: keep
+      - source_labels: [__name__]
+        regex: 'pg_replication_.*'
+        action: keep
+      - source_labels: [__name__]
+        regex: 'pg_locks_.*'
+        action: keep
+
+  # ========================================
+  # ProxySQL Metrics (via mysqld_exporter)
+  # ========================================
+  - job_name: 'proxysql'
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - 'proxysql_exporter:9104'
+        labels:
+          instance: 'proxysql-1'
+          service: 'proxysql'
+
+  # ========================================
+  # Node/System Metrics (via node_exporter)
+  # ========================================
+  - job_name: 'node'
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - 'node_exporter:9100'
+        labels:
+          instance: 'host'
+          service: 'system'
+
+  # ========================================
+  # Container Metrics (via cAdvisor)
+  # ========================================
+  - job_name: 'cadvisor'
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - 'cadvisor:8080'
+        labels:
+          service: 'containers'
+    metric_relabel_configs:
+      # Only keep PostgreSQL and ProxySQL containers
+      - source_labels: [container_label_com_docker_compose_service]
+        regex: '(pg-.*|proxysql.*|witness)'
+        action: keep
+
+  # ========================================
+  # Alertmanager Metrics
+  # ========================================
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets:
+          - 'alertmanager:9093'
+        labels:
+          service: 'alertmanager'
+
+  # ========================================
+  # Grafana Metrics
+  # ========================================
+  - job_name: 'grafana'
+    static_configs:
+      - targets:
+          - 'grafana:3000'
+        labels:
+          service: 'grafana'
+
+  # ========================================
+  # Loki Metrics
+  # ========================================
+  - job_name: 'loki'
+    static_configs:
+      - targets:
+          - 'loki:3100'
+        labels:
+          service: 'loki'
+
+  # ========================================
+  # Tempo Metrics
+  # ========================================
+  - job_name: 'tempo'
+    static_configs:
+      - targets:
+          - 'tempo:3200'
+        labels:
+          service: 'tempo'
+
+  # ========================================
+  # Mimir Metrics
+  # ========================================
+  - job_name: 'mimir'
+    static_configs:
+      - targets:
+          - 'mimir:9009'
+        labels:
+          service: 'mimir'

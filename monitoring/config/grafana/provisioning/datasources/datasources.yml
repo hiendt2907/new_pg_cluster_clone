@@ -1,0 +1,121 @@
+# ============================================================================
+# Grafana Datasources - LGTM+ Stack
+# ============================================================================
+
+apiVersion: 1
+
+datasources:
+  # Prometheus - Short-term metrics (15 days)
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      queryTimeout: 60s
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+    version: 1
+
+  # Mimir - Long-term metrics storage (90 days)
+  - name: Mimir
+    type: prometheus
+    access: proxy
+    url: http://mimir:9009/prometheus
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      queryTimeout: 120s
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+    version: 1
+
+  # Loki - Logs
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # Extract trace IDs from logs and link to Tempo
+        - matcherRegex: "trace_id=(\\w+)"
+          name: TraceID
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+        
+        # Extract PostgreSQL query duration
+        - matcherRegex: "duration: (\\d+\\.\\d+) ms"
+          name: Duration
+          url: ""
+    version: 1
+
+  # Tempo - Distributed traces
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: GET
+      tracesToLogs:
+        datasourceUid: loki
+        tags: ['job', 'instance', 'pod', 'namespace']
+        mappedTags: [{ key: 'service.name', value: 'job' }]
+        mapTagNamesEnabled: false
+        spanStartTimeShift: '1h'
+        spanEndTimeShift: '-1h'
+        filterByTraceID: true
+        filterBySpanID: false
+      
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags: [{ key: 'service.name', value: 'job' }]
+        queries:
+          - name: 'Request rate'
+            query: 'sum(rate(traces_spanmetrics_latency_count{$$__tags}[5m]))'
+          - name: 'Error rate'
+            query: 'sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR",$$__tags}[5m]))'
+          - name: 'Duration histogram'
+            query: 'histogram_quantile(0.9, sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m])) by (le))'
+      
+      serviceMap:
+        datasourceUid: prometheus
+      
+      search:
+        hide: false
+      
+      nodeGraph:
+        enabled: true
+    version: 1
+
+  # PostgreSQL - Direct database access for ad-hoc queries
+  - name: PostgreSQL (via ProxySQL)
+    type: postgres
+    access: proxy
+    url: proxysql:5432
+    database: postgres
+    user: app_readonly
+    secureJsonData:
+      password: ${POSTGRES_APP_READONLY_PASSWORD}
+    isDefault: false
+    editable: false
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 300
+      postgresVersion: 1700  # PostgreSQL 17.0
+      timescaledb: false
+    version: 1
