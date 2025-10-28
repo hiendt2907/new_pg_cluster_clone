@@ -288,13 +288,13 @@ pg_cache_hit_ratio:
         usage: "GAUGE"
         description: "Cache hit ratio (0-1)"
 
-# Index usage
+# Index usage (PostgreSQL 17+ compatible)
 pg_index_usage:
   query: |
     SELECT 
       schemaname,
-      tablename,
-      indexname,
+      relname AS tablename,
+      indexrelname AS indexname,
       idx_scan,
       idx_tup_read,
       idx_tup_fetch
@@ -323,12 +323,12 @@ pg_index_usage:
         usage: "COUNTER"
         description: "Tuples fetched using index"
 
-# Autovacuum activity
+# Autovacuum activity (PostgreSQL 17+ compatible)
 pg_autovacuum_activity:
   query: |
     SELECT 
       schemaname,
-      tablename,
+      relname AS tablename,
       last_vacuum,
       last_autovacuum,
       vacuum_count,
